@@ -1,0 +1,27 @@
+file(GLOB HEADERS "include/amalgam/app/*.hpp")
+
+add_library( amalgam_app
+             database_api.cpp
+             api.cpp
+             application.cpp
+             impacted.cpp
+             plugin.cpp
+             ${HEADERS}
+           )
+
+target_link_libraries( amalgam_app amalgam_chain amalgam_protocol amalgam_tags amalgam_follow amalgam_witness amalgam_mf_plugins fc graphene_net graphene_utilities )
+target_include_directories( amalgam_app
+                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+
+if(MSVC)
+  set_source_files_properties( application.cpp api.cpp database_api.cpp PROPERTIES COMPILE_FLAGS "/bigobj" )
+endif(MSVC)
+
+INSTALL( TARGETS
+   amalgam_app
+
+   RUNTIME DESTINATION bin
+   LIBRARY DESTINATION lib
+   ARCHIVE DESTINATION lib
+)
+INSTALL( FILES ${HEADERS} DESTINATION "include/amalgam/app" )
