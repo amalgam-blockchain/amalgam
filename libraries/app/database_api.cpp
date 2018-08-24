@@ -637,11 +637,9 @@ fc::optional<witness_api_obj> database_api::get_witness_by_account( string accou
 
 vector< witness_api_obj > database_api::get_witnesses_by_vote( string from, uint32_t limit )const
 {
+   FC_ASSERT(limit <= 100);
    return my->_db.with_read_lock( [&]()
    {
-      //idump((from)(limit));
-      FC_ASSERT( limit <= 100 );
-
       vector<witness_api_obj> result;
       result.reserve(limit);
 
@@ -762,9 +760,6 @@ order_book database_api_impl::get_order_book( uint32_t limit )const
    auto sell_itr = limit_price_idx.lower_bound(max_sell);
    auto buy_itr  = limit_price_idx.lower_bound(max_buy);
    auto end = limit_price_idx.end();
-//   idump((max_sell)(max_buy));
-//   if( sell_itr != end ) idump((*sell_itr));
-//   if( buy_itr != end ) idump((*buy_itr));
 
    while(  sell_itr != end && sell_itr->sell_price.base.symbol == ABD_SYMBOL && result.bids.size() < limit )
    {
@@ -1243,22 +1238,26 @@ vector<discussion> database_api::get_replies_by_last_update( account_name_type s
 
 map< uint32_t, applied_operation > database_api::get_account_history( string account, uint64_t from, uint32_t limit )const
 {
+   FC_ASSERT(limit <= 10000, "Limit of ${l} is greater than maximum allowed", ("l", limit));
+   FC_ASSERT(from >= limit, "From must be greater than limit");
    return my->_db.with_read_lock( [&]()
    {
-      FC_ASSERT( limit <= 10000, "Limit of ${l} is greater than maxmimum allowed", ("l",limit) );
-      FC_ASSERT( from >= limit, "From must be greater than limit" );
-   //   idump((account)(from)(limit));
       const auto& idx = my->_db.get_index<account_history_index>().indices().get<by_account>();
       auto itr = idx.lower_bound( boost::make_tuple( account, from ) );
-   //   if( itr != idx.end() ) idump((*itr));
-      auto end = idx.upper_bound( boost::make_tuple( account, std::max( int64_t(0), int64_t(itr->sequence)-limit ) ) );
-   //   if( end != idx.end() ) idump((*end));
+      uint32_t n = 0;
 
       map<uint32_t, applied_operation> result;
-      while( itr != end )
+      while( true )
       {
+         if( itr == idx.end() )
+            break;
+         if( itr->account != account )
+            break;
+         if( n >= limit )
+            break;
          result[itr->sequence] = my->_db.get(itr->op);
          ++itr;
+         ++n;
       }
       return result;
    });
@@ -1339,7 +1338,6 @@ vector<discussion> database_api::get_discussions( const discussion_query& query,
                                                   bool ignore_parent
                                                   )const
 {
-   // idump((query));
    vector<discussion> result;
 
    const auto& cidx = my->_db.get_index<tags::tag_index>().indices().get<tags::by_comment>();
