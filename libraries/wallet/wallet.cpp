@@ -4,8 +4,6 @@
 
 #include <amalgam/app/api.hpp>
 #include <amalgam/protocol/base.hpp>
-#include <amalgam/follow/follow_operations.hpp>
-#include <amalgam/private_message/private_message_operations.hpp>
 #include <amalgam/wallet/wallet.hpp>
 #include <amalgam/wallet/api_documentation.hpp>
 #include <amalgam/wallet/reflect_util.hpp>
@@ -883,24 +881,6 @@ public:
       }
    }
 
-   void use_remote_message_api()
-   {
-      if( _remote_message_api.valid() )
-         return;
-
-      try { _remote_message_api = _remote_api->get_api_by_name("private_message_api")->as< private_message_api >(); }
-      catch( const fc::exception& e ) { elog( "Couldn't get private message API" ); throw(e); }
-   }
-
-   void use_follow_api()
-   {
-      if( _remote_follow_api.valid() )
-         return;
-
-      try { _remote_follow_api = _remote_api->get_api_by_name("follow_api")->as< follow::follow_api >(); }
-      catch( const fc::exception& e ) { elog( "Couldn't get follow API" ); throw(e); }
-   }
-
    void use_remote_account_by_key_api()
    {
       if( _remote_account_by_key_api.valid() )
@@ -952,8 +932,6 @@ public:
    fc::api<network_broadcast_api>          _remote_net_broadcast;
    optional< fc::api<network_node_api> >   _remote_net_node;
    optional< fc::api<account_by_key::account_by_key_api> > _remote_account_by_key_api;
-   optional< fc::api<private_message_api> > _remote_message_api;
-   optional< fc::api<follow::follow_api> >  _remote_follow_api;
    uint32_t                                _tx_expiration_seconds = 30;
 
    flat_map<string, operation>             _prototype_ops;
@@ -2197,10 +2175,6 @@ map<uint32_t,applied_operation> wallet_api::get_account_history( string account,
    return result;
 }
 
-app::state wallet_api::get_state( string url ) {
-   return my->_remote_db->get_state(url);
-}
-
 vector< withdraw_route > wallet_api::get_withdraw_routes( string account, withdraw_route_type type )const
 {
    return my->_remote_db->get_withdraw_routes( account, type );
@@ -2320,152 +2294,8 @@ annotated_signed_transaction wallet_api::prove( string challenged, bool broadcas
    return my->sign_transaction( tx, broadcast );
 }
 
-
 annotated_signed_transaction wallet_api::get_transaction( transaction_id_type id )const {
    return my->_remote_db->get_transaction( id );
-}
-
-annotated_signed_transaction wallet_api::follow( string follower, string following, set<string> what, bool broadcast ) {
-   auto follwer_account     = get_account( follower );
-   FC_ASSERT( following.size() );
-   if( following[0] != '@' || following[0] != '#' ) {
-      following = '@' + following;
-   }
-   if( following[0] == '@' ) {
-      get_account( following.substr(1) );
-   }
-   FC_ASSERT( following.size() > 1 );
-
-   follow::follow_operation fop;
-   fop.follower = follower;
-   fop.following = following;
-   fop.what = what;
-   follow::follow_plugin_operation op = fop;
-
-   custom_json_operation jop;
-   jop.id = "follow";
-   jop.json = fc::json::to_string(op);
-   jop.required_posting_auths.insert(follower);
-
-   signed_transaction trx;
-   trx.operations.push_back( jop );
-   trx.validate();
-
-   return my->sign_transaction( trx, broadcast );
-}
-
-annotated_signed_transaction      wallet_api::send_private_message( string from, string to, string subject, string body, bool broadcast ) {
-   FC_ASSERT( !is_locked(), "wallet must be unlocked to send a private message" );
-   auto from_account = get_account( from );
-   auto to_account   = get_account( to );
-
-   custom_operation op;
-   op.required_auths.insert(from);
-   op.id = AMALGAM_PRIVATE_MESSAGE_COP_ID;
-
-
-   private_message_operation pmo;
-   pmo.from          = from;
-   pmo.to            = to;
-   pmo.sent_time     = fc::time_point::now().time_since_epoch().count();
-   pmo.from_memo_key = from_account.memo_key;
-   pmo.to_memo_key   = to_account.memo_key;
-
-   message_body message;
-   message.subject = subject;
-   message.body    = body;
-
-   auto priv_key = wif_to_key( get_private_key( pmo.from_memo_key ) );
-   FC_ASSERT( priv_key, "unable to find private key for memo" );
-   auto shared_secret = priv_key->get_shared_secret( pmo.to_memo_key );
-   fc::sha512::encoder enc;
-   fc::raw::pack( enc, pmo.sent_time );
-   fc::raw::pack( enc, shared_secret );
-   auto encrypt_key = enc.result();
-   auto hash_encrypt_key = fc::sha256::hash( encrypt_key );
-   pmo.checksum = hash_encrypt_key._hash[0];
-
-   vector<char> plain_text = fc::raw::pack( message );
-   pmo.encrypted_message = fc::aes_encrypt( encrypt_key, plain_text );
-
-   message_api_obj obj;
-   obj.to_memo_key   = pmo.to_memo_key;
-   obj.from_memo_key = pmo.from_memo_key;
-   obj.checksum = pmo.checksum;
-   obj.sent_time = pmo.sent_time;
-   obj.encrypted_message = pmo.encrypted_message;
-   auto decrypted = try_decrypt_message(obj);
-
-   op.data = fc::raw::pack( pmo );
-
-   signed_transaction tx;
-   tx.operations.push_back( op );
-   tx.validate();
-
-   return my->sign_transaction( tx, broadcast );
-}
-message_body wallet_api::try_decrypt_message( const message_api_obj& mo ) {
-   message_body result;
-
-   fc::sha512 shared_secret;
-
-   auto it = my->_keys.find(mo.from_memo_key);
-   if( it == my->_keys.end() )
-   {
-      it = my->_keys.find(mo.to_memo_key);
-      if( it == my->_keys.end() )
-      {
-         wlog( "unable to find keys" );
-         return result;
-      }
-      auto priv_key = wif_to_key( it->second );
-      if( !priv_key ) return result;
-      shared_secret = priv_key->get_shared_secret( mo.from_memo_key );
-   } else {
-      auto priv_key = wif_to_key( it->second );
-      if( !priv_key ) return result;
-      shared_secret = priv_key->get_shared_secret( mo.to_memo_key );
-   }
-
-
-   fc::sha512::encoder enc;
-   fc::raw::pack( enc, mo.sent_time );
-   fc::raw::pack( enc, shared_secret );
-   auto encrypt_key = enc.result();
-
-   uint32_t check = fc::sha256::hash( encrypt_key )._hash[0];
-
-   if( mo.checksum != check )
-      return result;
-
-   auto decrypt_data = fc::aes_decrypt( encrypt_key, mo.encrypted_message );
-   try {
-      return fc::raw::unpack<message_body>( decrypt_data );
-   } catch ( ... ) {
-      return result;
-   }
-}
-
-vector<extended_message_object>   wallet_api::get_inbox( string account, fc::time_point newest, uint32_t limit ) {
-   FC_ASSERT( !is_locked() );
-   vector<extended_message_object> result;
-   auto remote_result = (*my->_remote_message_api)->get_inbox( account, newest, limit );
-   for( const auto& item : remote_result ) {
-      result.emplace_back( item );
-      result.back().message = try_decrypt_message( item );
-   }
-   return result;
-}
-
-vector<extended_message_object>   wallet_api::get_outbox( string account, fc::time_point newest, uint32_t limit ) {
-   FC_ASSERT( !is_locked() );
-   vector<extended_message_object> result;
-   auto remote_result = (*my->_remote_message_api)->get_outbox( account, newest, limit );
-   for( const auto& item : remote_result ) {
-      result.emplace_back( item );
-      result.back().message = try_decrypt_message( item );
-   }
-   return result;
 }
 
 } } // amalgam::wallet

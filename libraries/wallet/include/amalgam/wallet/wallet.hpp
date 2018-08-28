@@ -1,8 +1,6 @@
 #pragma once
 
 #include <amalgam/app/api.hpp>
-#include <amalgam/private_message/private_message_plugin.hpp>
-#include <amalgam/follow/follow_plugin.hpp>
 #include <amalgam/app/amalgam_api_objects.hpp>
 
 #include <graphene/utilities/key_conversion.hpp>
@@ -18,7 +16,6 @@ using namespace std;
 namespace amalgam { namespace wallet {
 
 using amalgam::app::discussion;
-using namespace amalgam::private_message;
 
 typedef uint16_t transaction_handle_type;
 
@@ -140,11 +137,6 @@ class wallet_api
        * Returns the queue of pow miners waiting to produce blocks.
        */
       vector<account_name_type>                      get_miner_queue()const;
-
-      /**
-       * Returns the state info associated with the URL
-       */
-      app::state                          get_state( string url );
 
       /**
        * Returns vesting withdraw routes for an account.
@@ -854,11 +846,6 @@ class wallet_api
        */
       annotated_signed_transaction post_comment( string author, string permlink, string parent_author, string parent_permlink, string title, string body, string json, bool broadcast );
 
-      annotated_signed_transaction      send_private_message( string from, string to, string subject, string body, bool broadcast );
-      vector<extended_message_object>   get_inbox( string account, fc::time_point newest, uint32_t limit );
-      vector<extended_message_object>   get_outbox( string account, fc::time_point newest, uint32_t limit );
-      message_body try_decrypt_message( const message_api_obj& mo );
-
       /**
        * Vote on a comment to be paid AMALGAM
        *
@@ -941,15 +928,6 @@ class wallet_api
        */
       map<uint32_t,applied_operation> get_account_history( string account, uint32_t from, uint32_t limit );
 
-
-      /**
-       *  Marks one account as following another account.  Requires the posting authority of the follower.
-       *
-       *  @param what - a set of things to follow: posts, comments, votes, ignore
-       */
-      annotated_signed_transaction follow( string follower, string following, set<string> what, bool broadcast );
-
-
       std::map<string,std::function<string(fc::variant,const fc::variants&)>> get_result_formatters() const;
 
       fc::signal<void(bool)> lock_changed;
@@ -1022,7 +1000,6 @@ FC_API( amalgam::wallet::wallet_api,
         (get_feed_history)
         (get_conversion_requests)
         (get_account_history)
-        (get_state)
         (get_withdraw_routes)
 
         /// transaction api
@@ -1040,7 +1017,6 @@ FC_API( amalgam::wallet::wallet_api,
         (update_witness)
         (set_voting_proxy)
         (vote_for_witness)
-        (follow)
         (transfer)
         (escrow_transfer)
         (escrow_approve)
@@ -1071,11 +1047,6 @@ FC_API( amalgam::wallet::wallet_api,
         (decrypt_memo)
         (decline_voting_rights)
         (claim_reward_balance)
-
-        // private message api
-        (send_private_message)
-        (get_inbox)
-        (get_outbox)
 
         /// helper api
         (get_prototype_operation)

@@ -177,7 +177,6 @@ namespace amalgam { namespace chain {
    struct by_last_update; /// parent_auth, last_update
    struct by_created; /// parent_auth, last_update
    struct by_payout; /// parent_auth, last_update
-   struct by_blog;
    struct by_votes;
    struct by_responses;
    struct by_author_last_update;

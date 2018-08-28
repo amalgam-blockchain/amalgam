@@ -7,9 +7,6 @@
 #include <amalgam/chain/amalgam_object_types.hpp>
 #include <amalgam/chain/history_object.hpp>
 
-#include <amalgam/tags/tags_plugin.hpp>
-
-#include <amalgam/follow/follow_plugin.hpp>
 #include <amalgam/witness/witness_plugin.hpp>
 
 #include <fc/api.hpp>
@@ -77,27 +74,6 @@ enum withdraw_route_type
 
 class database_api_impl;
 
-/**
- *  Defines the arguments to a query as a struct so it can be easily extended
- */
-struct discussion_query {
-   void validate()const{
-      FC_ASSERT( filter_tags.find(tag) == filter_tags.end() );
-      FC_ASSERT( limit <= 100 );
-   }
-
-   string           tag;
-   uint32_t         limit = 0;
-   set<string>      filter_tags;
-   set<string>      select_authors; ///< list of authors to include, posts not by this author are filtered
-   set<string>      select_tags; ///< list of tags to include, posts without these tags are filtered
-   uint32_t         truncate_body = 0; ///< the number of bytes of the post body to return, 0 for all
-   optional<string> start_author;
-   optional<string> start_permlink;
-   optional<string> parent_author;
-   optional<string> parent_permlink;
-};
-
 struct verify_signatures_args
 {
    fc::sha256                       hash;
@@ -123,20 +99,6 @@ class database_api
    public:
       database_api(const amalgam::app::api_context& ctx);
       ~database_api();
-
-      ///////////////////
-      // Subscriptions //
-      ///////////////////
-
-      void set_block_applied_callback( std::function<void(const variant& block_header)> cb );
-
-      vector<tag_api_obj> get_trending_tags( string after_tag, uint32_t limit )const;
-
-      /**
-       *  This API is a short-cut for returning all of the state required for a particular URL
-       *  with a single query.
-       */
-      state get_state( string path )const;
 
       vector< account_name_type > get_active_witnesses()const;
       vector< account_name_type > get_miner_queue()const;
@@ -193,22 +155,11 @@ class database_api
       scheduled_hardfork               get_next_scheduled_hardfork()const;
       reward_fund_api_obj              get_reward_fund( string name )const;
 
-      //////////
-      // Keys //
-      //////////
-
-      vector<set<string>> get_key_references( vector<public_key_type> key )const;
-
       //////////////
       // Accounts //
       //////////////
 
       vector< extended_account > get_accounts( vector< string > names ) const;
-
-      /**
-       *  @return all accounts that referr to the key or account id in their owner or active authorities.
-       */
-      vector<account_id_type> get_account_references( account_id_type account_id )const;
 
       /**
        * @brief Get a list of accounts by name
@@ -355,55 +306,11 @@ class database_api
       discussion           get_content( string author, string permlink )const;
       vector<discussion>   get_content_replies( string parent, string parent_permlink )const;
 
-      ///@{ tags API
-      /** This API will return the top 1000 tags used by an author sorted by most frequently used */
-      vector<pair<string,uint32_t>> get_tags_used_by_author( const string& author )const;
-      vector<discussion> get_discussions_by_payout(const discussion_query& query )const;
-      vector<discussion> get_post_discussions_by_payout( const discussion_query& query )const;
-      vector<discussion> get_comment_discussions_by_payout( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_trending( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_created( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_active( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_cashout( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_votes( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_children( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_hot( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_feed( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_blog( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_comments( const discussion_query& query )const;
-      vector<discussion> get_discussions_by_promoted( const discussion_query& query )const;
-
-      ///@}
-
-      /**
-       *  For each of these filters:
-       *     Get root content...
-       *     Get any content...
-       *     Get root content in category..
-       *     Get any content in category...
-       *
-       *  Return discussions
-       *     Total Discussion Pending Payout
-       *     Last Discussion Update (or reply)... think
-       *     Top Discussions by Total Payout
-       *
-       *  Return content (comments)
-       *     Pending Payout Amount
-       *     Pending Payout Time
-       *     Creation Date
-       *
-       */
-      ///@{
-
-
-
       /**
        *  Return the active discussions with the highest cumulative pending payouts without respect to category, total
        *  pending payout means the pending payout of all children as well.
        */
       vector<discussion>   get_replies_by_last_update( account_name_type start_author, string start_permlink, uint32_t limit )const;
-
-
 
       /**
        *  This method is used to fetch all posts/comments by start_author that occur after before_date and start_permlink with up to limit being returned.
@@ -430,26 +337,6 @@ class database_api
    private:
       void set_pending_payout( discussion& d )const;
       void set_url( discussion& d )const;
-      discussion get_discussion( comment_id_type, uint32_t truncate_body = 0 )const;
-
-      static bool filter_default( const comment_api_obj& c ) { return false; }
-      static bool exit_default( const comment_api_obj& c )   { return false; }
-      static bool tag_exit_default( const tags::tag_object& c ) { return false; }
-
-      template<typename Index, typename StartItr>
-      vector<discussion> get_discussions( const discussion_query& q,
-                                          const string& tag,
-                                          comment_id_type parent,
-                                          const Index& idx, StartItr itr,
-                                          uint32_t truncate_body = 0,
-                                          const std::function< bool( const comment_api_obj& ) >& filter = &database_api::filter_default,
-                                          const std::function< bool( const comment_api_obj& ) >& exit   = &database_api::exit_default,
-                                          const std::function< bool( const tags::tag_object& ) >& tag_exit = &database_api::tag_exit_default,
-                                          bool ignore_parent = false
-                                          )const;
-      comment_id_type get_parent( const discussion_query& q )const;
-
-      void recursively_fetch_content( state& _state, discussion& root, set<string>& referenced_accounts )const;
 
       std::shared_ptr< database_api_impl >   my;
 };
@@ -462,40 +349,16 @@ FC_REFLECT( amalgam::app::scheduled_hardfork, (hf_version)(live_time) );
 FC_REFLECT( amalgam::app::liquidity_balance, (account)(weight) );
 FC_REFLECT( amalgam::app::withdraw_route, (from_account)(to_account)(percent)(auto_vest) );
 
-FC_REFLECT( amalgam::app::discussion_query, (tag)(filter_tags)(select_tags)(select_authors)(truncate_body)(start_author)(start_permlink)(parent_author)(parent_permlink)(limit) );
-
 FC_REFLECT_ENUM( amalgam::app::withdraw_route_type, (incoming)(outgoing)(all) );
 
 FC_REFLECT( amalgam::app::verify_signatures_args, (hash)(signatures)(accounts)(auth_level) );
 FC_REFLECT( amalgam::app::verify_signatures_return, (valid) );
 
 FC_API(amalgam::app::database_api,
-   // Subscriptions
-   (set_block_applied_callback)
-
-   // tags
-   (get_trending_tags)
-   (get_tags_used_by_author)
-   (get_discussions_by_payout)
-   (get_post_discussions_by_payout)
-   (get_comment_discussions_by_payout)
-   (get_discussions_by_trending)
-   (get_discussions_by_created)
-   (get_discussions_by_active)
-   (get_discussions_by_cashout)
-   (get_discussions_by_votes)
-   (get_discussions_by_children)
-   (get_discussions_by_hot)
-   (get_discussions_by_feed)
-   (get_discussions_by_blog)
-   (get_discussions_by_comments)
-   (get_discussions_by_promoted)
-
    // Blocks and transactions
    (get_block_header)
    (get_block)
    (get_ops_in_block)
-   (get_state)
 
    // Globals
    (get_config)
@@ -508,12 +371,8 @@ FC_API(amalgam::app::database_api,
    (get_next_scheduled_hardfork)
    (get_reward_fund)
 
-   // Keys
-   (get_key_references)
-
    // Accounts
    (get_accounts)
-   (get_account_references)
    (lookup_account_names)
    (lookup_accounts)
    (get_account_count)
@@ -552,7 +411,6 @@ FC_API(amalgam::app::database_api,
    (get_content_replies)
    (get_discussions_by_author_before_date)
    (get_replies_by_last_update)
-
 
    // Witnesses
    (get_witnesses)

@@ -2,42 +2,18 @@
 #include <amalgam/chain/account_object.hpp>
 #include <amalgam/chain/block_summary_object.hpp>
 #include <amalgam/chain/comment_object.hpp>
+#include <amalgam/chain/database.hpp>
 #include <amalgam/chain/global_property_object.hpp>
 #include <amalgam/chain/history_object.hpp>
 #include <amalgam/chain/amalgam_objects.hpp>
 #include <amalgam/chain/transaction_object.hpp>
 #include <amalgam/chain/witness_objects.hpp>
 
-#include <amalgam/tags/tags_plugin.hpp>
-
 #include <amalgam/witness/witness_objects.hpp>
 
 namespace amalgam { namespace app {
 
 using namespace amalgam::chain;
-
-/*struct limit_order
-{
-   limit_order( chain::limit_order_object& o ):
-      id( o.id ),
-      created( o.created ),
-      expiration( o.expiration ),
-      seller( o.seller ),
-      orderid( o.orderid ),
-      for_sale( o.for_sale ),
-      sell_price( o.sell_price )
-   {}
-
-   limit_order(){}
-
-   chain::limit_order_id_type id;
-   time_point_sec             created;
-   time_point_sec             expiration;
-   account_name_type          seller;
-   uint32_t                   orderid = 0;
-   share_type                 for_sale;
-   price                      sell_price;
-};*/
 
 typedef chain::change_recovery_account_request_object  change_recovery_account_request_api_obj;
 typedef chain::block_summary_object                    block_summary_api_obj;
@@ -144,26 +120,6 @@ struct comment_api_obj
    bool              allow_votes = false;
    bool              allow_curation_rewards = false;
    vector< beneficiary_route_type > beneficiaries;
-};
-
-struct tag_api_obj
-{
-   tag_api_obj( const tags::tag_stats_object& o ) :
-      name( o.tag ),
-      total_payouts(o.total_payout),
-      net_votes(o.net_votes),
-      top_posts(o.top_posts),
-      comments(o.comments),
-      trending(o.total_trending) {}
-
-   tag_api_obj() {}
-
-   string               name;
-   asset                total_payouts;
-   int32_t              net_votes = 0;
-   uint32_t             top_posts = 0;
-   uint32_t             comments = 0;
-   fc::uint128          trending = 0;
 };
 
 struct account_api_obj
@@ -566,15 +522,6 @@ FC_REFLECT( amalgam::app::feed_history_api_obj,
              (id)
              (current_median_history)
              (price_history)
-          )
-
-FC_REFLECT( amalgam::app::tag_api_obj,
-            (name)
-            (total_payouts)
-            (net_votes)
-            (top_posts)
-            (comments)
-            (trending)
           )
 
 FC_REFLECT( amalgam::app::witness_api_obj,
