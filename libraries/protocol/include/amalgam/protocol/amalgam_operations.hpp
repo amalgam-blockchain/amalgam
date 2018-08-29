@@ -17,6 +17,17 @@ namespace amalgam { namespace protocol {
    {
       FC_ASSERT( permlink.size() < AMALGAM_MAX_PERMLINK_LENGTH, "permlink is too long" );
       FC_ASSERT( fc::is_utf8( permlink ), "permlink not formatted in UTF8" );
+      for( auto c : permlink )
+      {
+         switch( c )
+         {
+            case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+            case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case '-':
+               break;
+            default:
+               FC_ASSERT( false, "Invalid permlink character: ${s}", ("s", std::string() + c ) );
+         }
+      }
    }
 
    struct account_create_operation : public base_operation
@@ -81,8 +92,6 @@ namespace amalgam { namespace protocol {
       account_name_type author;
       string            permlink;
 
-      string            title;
-      string            body;
       string            json_metadata;
 
       void validate()const;
@@ -1000,7 +1009,7 @@ FC_REFLECT( amalgam::protocol::set_withdraw_vesting_route_operation, (from_accou
 FC_REFLECT( amalgam::protocol::witness_update_operation, (owner)(url)(block_signing_key)(props)(fee) )
 FC_REFLECT( amalgam::protocol::account_witness_vote_operation, (account)(witness)(approve) )
 FC_REFLECT( amalgam::protocol::account_witness_proxy_operation, (account)(proxy) )
-FC_REFLECT( amalgam::protocol::comment_operation, (parent_author)(parent_permlink)(author)(permlink)(title)(body)(json_metadata) )
+FC_REFLECT( amalgam::protocol::comment_operation, (parent_author)(parent_permlink)(author)(permlink)(json_metadata) )
 FC_REFLECT( amalgam::protocol::vote_operation, (voter)(author)(permlink)(weight) )
 FC_REFLECT( amalgam::protocol::custom_operation, (required_auths)(id)(data) )
 FC_REFLECT( amalgam::protocol::custom_json_operation, (required_auths)(required_posting_auths)(id)(json) )

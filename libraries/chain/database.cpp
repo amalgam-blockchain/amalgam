@@ -368,24 +368,24 @@ const account_object* database::find_account( const account_name_type& name )con
    return find< account_object, by_name >( name );
 }
 
-const comment_object& database::get_comment( const account_name_type& author, const shared_string& permlink )const
+const comment_object& database::get_comment( const shared_string& permlink )const
 { try {
-   return get< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
-} FC_CAPTURE_AND_RETHROW( (author)(permlink) ) }
+   return get< comment_object, by_permlink >( permlink );
+} FC_CAPTURE_AND_RETHROW( (permlink) ) }
 
-const comment_object* database::find_comment( const account_name_type& author, const shared_string& permlink )const
+const comment_object* database::find_comment( const shared_string& permlink )const
 {
-   return find< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
+   return find< comment_object, by_permlink >( permlink );
 }
 
-const comment_object& database::get_comment( const account_name_type& author, const string& permlink )const
+const comment_object& database::get_comment( const string& permlink )const
 { try {
-   return get< comment_object, by_permlink >( boost::make_tuple( author, permlink) );
-} FC_CAPTURE_AND_RETHROW( (author)(permlink) ) }
+   return get< comment_object, by_permlink >( permlink );
+} FC_CAPTURE_AND_RETHROW( (permlink) ) }
 
-const comment_object* database::find_comment( const account_name_type& author, const string& permlink )const
+const comment_object* database::find_comment( const string& permlink )const
 {
-   return find< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
+   return find< comment_object, by_permlink >( permlink );
 }
 
 const escrow_object& database::get_escrow( const account_name_type& name, uint32_t escrow_id )const
@@ -3252,7 +3252,7 @@ void database::validate_invariants()const
          total_supply += itr->reward_balance;
       }
 
-      total_supply += gpo.total_vesting_fund_amalgam + gpo.total_reward_fund_amalgam + gpo.pending_rewarded_vesting_amalgam;
+      total_supply += gpo.total_vesting_fund_amalgam + gpo.pending_rewarded_vesting_amalgam;
 
       FC_ASSERT( gpo.current_supply == total_supply, "", ("gpo.current_supply",gpo.current_supply)("total_supply",total_supply) );
       FC_ASSERT( gpo.current_abd_supply == total_abd, "", ("gpo.current_abd_supply",gpo.current_abd_supply)("total_abd",total_abd) );

@@ -65,16 +65,11 @@ namespace amalgam { namespace protocol {
 
    void comment_operation::validate() const
    {
-      FC_ASSERT( title.size() < 256, "Title larger than size limit" );
-      FC_ASSERT( fc::is_utf8( title ), "Title not formatted in UTF8" );
-      FC_ASSERT( body.size() > 0, "Body is empty" );
-      FC_ASSERT( fc::is_utf8( body ), "Body not formatted in UTF8" );
-
-
       if( parent_author.size() )
          validate_account_name( parent_author );
       validate_account_name( author );
-      validate_permlink( parent_permlink );
+      if( parent_permlink.size() )
+         validate_permlink( parent_permlink );
       validate_permlink( permlink );
 
       if( json_metadata.size() > 0 )
@@ -100,7 +95,7 @@ namespace amalgam { namespace protocol {
       uint32_t sum = 0;
 
       FC_ASSERT( beneficiaries.size(), "Must specify at least one beneficiary" );
-      FC_ASSERT( beneficiaries.size() < 128, "Cannot specify more than 127 beneficiaries." ); // Require size serializtion fits in one byte.
+      FC_ASSERT( beneficiaries.size() < 128, "Cannot specify more than 127 beneficiaries." ); // Require size serialization fits in one byte.
 
       validate_account_name( beneficiaries[0].account );
       FC_ASSERT( beneficiaries[0].weight <= AMALGAM_100_PERCENT, "Cannot allocate more than 100% of rewards to one account" );
@@ -113,7 +108,7 @@ namespace amalgam { namespace protocol {
          FC_ASSERT( beneficiaries[i].weight <= AMALGAM_100_PERCENT, "Cannot allocate more than 100% of rewards to one account" );
          sum += beneficiaries[i].weight;
          FC_ASSERT( sum <= AMALGAM_100_PERCENT, "Cannot allocate more than 100% of rewards to a comment" ); // Have to check incrementally to avoid overflow
-         FC_ASSERT( beneficiaries[i - 1] < beneficiaries[i], "Benficiaries must be specified in sorted order (account ascending)" );
+         FC_ASSERT( beneficiaries[i - 1] < beneficiaries[i], "Beneficiaries must be specified in sorted order (account ascending)" );
       }
    }
 
@@ -149,7 +144,7 @@ namespace amalgam { namespace protocol {
    void vote_operation::validate() const
    {
       validate_account_name( voter );
-      validate_account_name( author );\
+      validate_account_name( author );
       FC_ASSERT( abs(weight) <= AMALGAM_100_PERCENT, "Weight is not a AMALGAM percentage" );
       validate_permlink( permlink );
    }
@@ -238,7 +233,7 @@ namespace amalgam { namespace protocol {
    {
       props.validate();
       validate_account_name( worker_account );
-      FC_ASSERT( work_input() == work.input, "Determninistic input does not match recorded input" );
+      FC_ASSERT( work_input() == work.input, "Deterministic input does not match recorded input" );
       work.validate();
    }
 

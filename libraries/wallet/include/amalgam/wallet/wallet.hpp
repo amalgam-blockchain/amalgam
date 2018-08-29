@@ -837,14 +837,12 @@ class wallet_api
        *
        *  @param author the name of the account authoring the comment
        *  @param permlink the accountwide unique permlink for the comment
-       *  @param parent_author can be null if this is a top level comment
-       *  @param parent_permlink becomes category if parent_author is ""
-       *  @param title the title of the comment
-       *  @param body the body of the comment
+       *  @param parent_author can be empty if this is a top level comment
+       *  @param parent_permlink can be empty if this is a top level comment
        *  @param json the json metadata of the comment
        *  @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction post_comment( string author, string permlink, string parent_author, string parent_permlink, string title, string body, string json, bool broadcast );
+      annotated_signed_transaction post_comment( string author, string permlink, string parent_author, string parent_permlink, string json, bool broadcast );
 
       /**
        * Vote on a comment to be paid AMALGAM

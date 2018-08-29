@@ -2221,7 +2221,7 @@ annotated_signed_transaction wallet_api::cancel_order( string owner, uint32_t or
    return my->sign_transaction( tx, broadcast );
 }
 
-annotated_signed_transaction wallet_api::post_comment( string author, string permlink, string parent_author, string parent_permlink, string title, string body, string json, bool broadcast )
+annotated_signed_transaction wallet_api::post_comment( string author, string permlink, string parent_author, string parent_permlink, string json, bool broadcast )
 {
    FC_ASSERT( !is_locked() );
    comment_operation op;
@@ -2229,8 +2229,6 @@ annotated_signed_transaction wallet_api::post_comment( string author, string per
    op.parent_permlink = parent_permlink;
    op.author = author;
    op.permlink = permlink;
-   op.title = title;
-   op.body = body;
    op.json_metadata = json;
 
    signed_transaction tx;

@@ -104,7 +104,7 @@ struct operation_process
    {
       _db.modify( _bucket, [&]( bucket_object& b )
       {
-         auto& comment = _db.get_comment( op.author, op.permlink );
+         auto& comment = _db.get_comment( op.permlink );
 
          if( comment.created == _db.head_block_time() )
          {
@@ -128,7 +128,7 @@ struct operation_process
       _db.modify( _bucket, [&]( bucket_object& b )
       {
          const auto& cv_idx = _db.get_index< comment_vote_index >().indices().get< by_comment_voter >();
-         auto& comment = _db.get_comment( op.author, op.permlink );
+         auto& comment = _db.get_comment( op.permlink );
          auto& voter = _db.get_account( op.voter );
          auto itr = cv_idx.find( boost::make_tuple( comment.id, voter.id ) );
 
@@ -340,7 +340,7 @@ void blockchain_statistics_plugin_impl::pre_operation( const operation_notificat
       if( o.op.which() == operation::tag< delete_comment_operation >::value )
       {
          delete_comment_operation op = o.op.get< delete_comment_operation >();
-         auto comment = db.get_comment( op.author, op.permlink );
+         auto comment = db.get_comment( op.permlink );
          const auto& bucket = db.get(bucket_id);
 
          db.modify( bucket, [&]( bucket_object& b )

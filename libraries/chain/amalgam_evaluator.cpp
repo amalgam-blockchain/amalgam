@@ -7,24 +7,6 @@
 
 #include <amalgam/chain/util/reward.hpp>
 
-#ifndef IS_LOW_MEM
-#include <diff_match_patch.h>
-#include <boost/locale/encoding_utf.hpp>
-
-using boost::locale::conv::utf_to_utf;
-
-std::wstring utf8_to_wstring(const std::string& str)
-{
-    return utf_to_utf<wchar_t>(str.c_str(), str.c_str() + str.size());
-}
-
-std::string wstring_to_utf8(const std::wstring& str)
-{
-    return utf_to_utf<char>(str.c_str(), str.c_str() + str.size());
-}
-
-#endif
-
 #include <fc/uint128.hpp>
 #include <fc/utf8.hpp>
 
@@ -41,11 +23,8 @@ inline void validate_permlink_0_1( const string& permlink )
    {
       switch( c )
       {
-         case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i':
-         case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r':
-         case 's': case 't': case 'u': case 'v': case 'w': case 'x': case 'y': case 'z': case '0':
-         case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-         case '-':
+         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+         case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case '-':
             break;
          default:
             FC_ASSERT( false, "Invalid permlink character: ${s}", ("s", std::string() + c ) );
@@ -328,7 +307,7 @@ void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
    const auto& auth = _db.get_account( o.author );
    FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
 
-   const auto& comment = _db.get_comment( o.author, o.permlink );
+   const auto& comment = _db.get_comment( o.permlink );
    FC_ASSERT( comment.children == 0, "Cannot delete a comment with replies." );
 
    FC_ASSERT( comment.cashout_time != fc::time_point_sec::maximum() );
@@ -346,10 +325,10 @@ void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
       _db.remove(cur_vote);
    }
 
-   /// this loop can be skiped for validate-only nodes as it is merely gathering stats for indicies
+   /// this loop can be skipped for validate-only nodes as it is merely gathering stats for indices
    if( comment.parent_author != AMALGAM_ROOT_POST_PARENT )
    {
-      auto parent = &_db.get_comment( comment.parent_author, comment.parent_permlink );
+      auto parent = &_db.get_comment( comment.parent_permlink );
       auto now = _db.head_block_time();
       while( parent )
       {
@@ -359,7 +338,7 @@ void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
          });
    #ifndef IS_LOW_MEM
          if( parent->parent_author != AMALGAM_ROOT_POST_PARENT )
-            parent = &_db.get_comment( parent->parent_author, parent->parent_permlink );
+            parent = &_db.get_comment( parent->parent_permlink );
          else
    #endif
             parent = nullptr;
@@ -400,7 +379,7 @@ void comment_options_evaluator::do_apply( const comment_options_operation& o )
    const auto& auth = _db.get_account( o.author );
    FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
 
-   const auto& comment = _db.get_comment( o.author, o.permlink );
+   const auto& comment = _db.get_comment( o.permlink );
    if( !o.allow_curation_rewards || !o.allow_votes || o.max_accepted_payout < comment.max_accepted_payout )
       FC_ASSERT( comment.abs_rshares == 0, "One of the included comment options requires the comment to have no rshares allocated to it." );
 
@@ -424,10 +403,8 @@ void comment_options_evaluator::do_apply( const comment_options_operation& o )
 
 void comment_evaluator::do_apply( const comment_operation& o )
 { try {
-   FC_ASSERT( o.title.size() + o.body.size() + o.json_metadata.size(), "Cannot update comment because nothing appears to be changing." );
-
    const auto& by_permlink_idx = _db.get_index< comment_index >().indices().get< by_permlink >();
-   auto itr = by_permlink_idx.find( boost::make_tuple( o.author, o.permlink ) );
+   auto itr = by_permlink_idx.find( o.permlink );
 
    const auto& auth = _db.get_account( o.author ); /// prove it exists
 
@@ -438,7 +415,7 @@ void comment_evaluator::do_apply( const comment_operation& o )
    const comment_object* parent = nullptr;
    if( o.parent_author != AMALGAM_ROOT_POST_PARENT )
    {
-      parent = &_db.get_comment( o.parent_author, o.parent_permlink );
+      parent = &_db.get_comment( o.parent_permlink );
       FC_ASSERT( parent->depth < AMALGAM_MAX_COMMENT_DEPTH, "Comment is nested ${x} posts deep, maximum depth is ${y}.", ("x",parent->depth)("y",AMALGAM_MAX_COMMENT_DEPTH) );
    }
 
@@ -474,7 +451,8 @@ void comment_evaluator::do_apply( const comment_operation& o )
 
       const auto& new_comment = _db.create< comment_object >( [&]( comment_object& com )
       {
-         validate_permlink_0_1( o.parent_permlink );
+         if ( o.parent_author != AMALGAM_ROOT_POST_PARENT )
+            validate_permlink_0_1( o.parent_permlink );
          validate_permlink_0_1( o.permlink );
 
          com.author = o.author;
@@ -489,8 +467,7 @@ void comment_evaluator::do_apply( const comment_operation& o )
          if ( o.parent_author == AMALGAM_ROOT_POST_PARENT )
          {
             com.parent_author = "";
-            from_string( com.parent_permlink, o.parent_permlink );
-            from_string( com.category, o.parent_permlink );
+            from_string( com.parent_permlink, "" );
             com.root_comment = com.id;
          }
          else
@@ -498,28 +475,20 @@ void comment_evaluator::do_apply( const comment_operation& o )
             com.parent_author = parent->author;
             com.parent_permlink = parent->permlink;
             com.depth = parent->depth + 1;
-            com.category = parent->category;
             com.root_comment = parent->root_comment;
          }
 
          com.cashout_time = com.created + AMALGAM_CASHOUT_WINDOW_SECONDS;
 
          #ifndef IS_LOW_MEM
-            from_string( com.title, o.title );
-            if( o.body.size() < 1024*1024*128 )
-            {
-               from_string( com.body, o.body );
-            }
-            if( fc::is_utf8( o.json_metadata ) )
+            if( ( o.json_metadata.size() ) )
                from_string( com.json_metadata, o.json_metadata );
-            else
-               wlog( "Comment ${a}/${p} contains invalid UTF-8 metadata", ("a", o.author)("p", o.permlink) );
          #endif
       });
 
       id = new_comment.id;
 
-/// this loop can be skiped for validate-only nodes as it is merely gathering stats for indicies
+/// this loop can be skipped for validate-only nodes as it is merely gathering stats for indices
       auto now = _db.head_block_time();
       while( parent ) {
          _db.modify( *parent, [&]( comment_object& p ){
@@ -528,7 +497,7 @@ void comment_evaluator::do_apply( const comment_operation& o )
          });
 #ifndef IS_LOW_MEM
          if( parent->parent_author != AMALGAM_ROOT_POST_PARENT )
-            parent = &_db.get_comment( parent->parent_author, parent->parent_permlink );
+            parent = &_db.get_comment( parent->parent_permlink );
          else
 #endif
             parent = nullptr;
@@ -557,33 +526,9 @@ void comment_evaluator::do_apply( const comment_operation& o )
          }
 
          #ifndef IS_LOW_MEM
-           if( o.title.size() )         from_string( com.title, o.title );
            if( o.json_metadata.size() )
            {
-              if( fc::is_utf8( o.json_metadata ) )
-                 from_string( com.json_metadata, o.json_metadata );
-              else
-                 wlog( "Comment ${a}/${p} contains invalid UTF-8 metadata", ("a", o.author)("p", o.permlink) );
-           }
-
-           if( o.body.size() ) {
-              try {
-               diff_match_patch<std::wstring> dmp;
-               auto patch = dmp.patch_fromText( utf8_to_wstring(o.body) );
-               if( patch.size() ) {
-                  auto result = dmp.patch_apply( patch, utf8_to_wstring( to_string( com.body ) ) );
-                  auto patched_body = wstring_to_utf8(result.first);
-                  if( !fc::is_utf8( patched_body ) ) {
-                     idump(("invalid utf8")(patched_body));
-                     from_string( com.body, fc::prune_invalid_utf8(patched_body) );
-                  } else { from_string( com.body, patched_body ); }
-               }
-               else { // replace
-                  from_string( com.body, o.body );
-               }
-              } catch ( ... ) {
-                  from_string( com.body, o.body );
-              }
+              from_string( com.json_metadata, o.json_metadata );
            }
          #endif
 
@@ -1002,7 +947,10 @@ void account_witness_vote_evaluator::do_apply( const account_witness_vote_operat
 
 void vote_evaluator::do_apply( const vote_operation& o )
 { try {
-   const auto& comment = _db.get_comment( o.author, o.permlink );
+   const auto& comment = _db.get_comment( o.permlink );
+   
+   FC_ASSERT( comment.author == o.author, "Wrong author specified." );
+   
    const auto& voter   = _db.get_account( o.voter );
 
    FC_ASSERT( !(voter.owner_challenged || voter.active_challenged ), "Operation cannot be processed because the account is currently challenged." );

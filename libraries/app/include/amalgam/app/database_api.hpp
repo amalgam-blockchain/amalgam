@@ -296,29 +296,12 @@ class database_api
        */
       verify_signatures_return verify_signatures( const verify_signatures_args& args )const;
 
-      /**
-       *  if permlink is "" then it will return all votes for author
-       */
-      vector<vote_state> get_active_votes( string author, string permlink )const;
+      vector<vote_state> get_active_votes( string permlink )const;
       vector<account_vote> get_account_votes( string voter )const;
 
 
-      discussion           get_content( string author, string permlink )const;
-      vector<discussion>   get_content_replies( string parent, string parent_permlink )const;
-
-      /**
-       *  Return the active discussions with the highest cumulative pending payouts without respect to category, total
-       *  pending payout means the pending payout of all children as well.
-       */
-      vector<discussion>   get_replies_by_last_update( account_name_type start_author, string start_permlink, uint32_t limit )const;
-
-      /**
-       *  This method is used to fetch all posts/comments by start_author that occur after before_date and start_permlink with up to limit being returned.
-       *
-       *  If start_permlink is empty then only before_date will be considered. If both are specified the eariler to the two metrics will be used. This
-       *  should allow easy pagination.
-       */
-      vector<discussion>   get_discussions_by_author_before_date( string author, string start_permlink, time_point_sec before_date, uint32_t limit )const;
+      discussion           get_content( string permlink )const;
+      vector<discussion>   get_content_replies( string parent_permlink )const;
 
       /**
        *  Account operations have sequence numbers from 0 to N where N is the most recent operation. This method
@@ -336,7 +319,6 @@ class database_api
 
    private:
       void set_pending_payout( discussion& d )const;
-      void set_url( discussion& d )const;
 
       std::shared_ptr< database_api_impl >   my;
 };
@@ -409,8 +391,6 @@ FC_API(amalgam::app::database_api,
    // content
    (get_content)
    (get_content_replies)
-   (get_discussions_by_author_before_date)
-   (get_replies_by_last_update)
 
    // Witnesses
    (get_witnesses)

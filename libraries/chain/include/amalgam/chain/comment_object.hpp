@@ -44,21 +44,18 @@ namespace amalgam { namespace chain {
       public:
          template< typename Constructor, typename Allocator >
          comment_object( Constructor&& c, allocator< Allocator > a )
-            :category( a ), parent_permlink( a ), permlink( a ), title( a ), body( a ), json_metadata( a ), beneficiaries( a )
+            :parent_permlink( a ), permlink( a ), json_metadata( a ), beneficiaries( a )
          {
             c( *this );
          }
 
          id_type           id;
 
-         shared_string     category;
          account_name_type parent_author;
          shared_string     parent_permlink;
          account_name_type author;
          shared_string     permlink;
 
-         shared_string     title;
-         shared_string     body;
          shared_string     json_metadata;
          time_point_sec    last_update;
          time_point_sec    created;
@@ -68,7 +65,7 @@ namespace amalgam { namespace chain {
          uint16_t          depth = 0; ///< used to track max nested depth
          uint32_t          children = 0; ///< used to track the total number of children, grandchildren, etc...
 
-         /// index on pending_payout for "things happning now... needs moderation"
+         /// index on pending_payout for "things happening now... needs moderation"
          /// TRENDING = UNCLAIMED + PENDING
          share_type        net_rshares; // reward is proportional to rshares^2, this is the sum of all votes (positive and negative)
          share_type        abs_rshares; /// this is used to track the total abs(weight) of votes for the purpose of calculating cashout_time
@@ -167,19 +164,10 @@ namespace amalgam { namespace chain {
    > comment_vote_index;
 
 
-   struct by_cashout_time; /// cashout_time
-   struct by_permlink; /// author, perm
+   struct by_cashout_time;
+   struct by_permlink;
    struct by_root;
    struct by_parent;
-   struct by_active; /// parent_auth, active
-   struct by_pending_payout;
-   struct by_total_pending_payout;
-   struct by_last_update; /// parent_auth, last_update
-   struct by_created; /// parent_auth, last_update
-   struct by_payout; /// parent_auth, last_update
-   struct by_votes;
-   struct by_responses;
-   struct by_author_last_update;
 
    /**
     * @ingroup object_index
@@ -187,7 +175,7 @@ namespace amalgam { namespace chain {
    typedef multi_index_container<
       comment_object,
       indexed_by<
-         /// CONSENUSS INDICIES - used by evaluators
+         /// CONSENSUS INDICES - used by evaluators
          ordered_unique< tag< by_id >, member< comment_object, comment_id_type, &comment_object::id > >,
          ordered_unique< tag< by_cashout_time >,
             composite_key< comment_object,
@@ -196,11 +184,8 @@ namespace amalgam { namespace chain {
             >
          >,
          ordered_unique< tag< by_permlink >, /// used by consensus to find posts referenced in ops
-            composite_key< comment_object,
-               member< comment_object, account_name_type, &comment_object::author >,
-               member< comment_object, shared_string, &comment_object::permlink >
-            >,
-            composite_key_compare< std::less< account_name_type >, strcmp_less >
+            member< comment_object, shared_string, &comment_object::permlink >,
+            strcmp_less
          >,
          ordered_unique< tag< by_root >,
             composite_key< comment_object,
@@ -208,34 +193,13 @@ namespace amalgam { namespace chain {
                member< comment_object, comment_id_type, &comment_object::id >
             >
          >,
-         ordered_unique< tag< by_parent >, /// used by consensus to find posts referenced in ops
+         ordered_unique< tag< by_parent >,
             composite_key< comment_object,
-               member< comment_object, account_name_type, &comment_object::parent_author >,
                member< comment_object, shared_string, &comment_object::parent_permlink >,
                member< comment_object, comment_id_type, &comment_object::id >
             >,
-            composite_key_compare< std::less< account_name_type >, strcmp_less, std::less< comment_id_type > >
+            composite_key_compare< strcmp_less, std::less< comment_id_type > >
          >
-         /// NON_CONSENSUS INDICIES - used by APIs
-#ifndef IS_LOW_MEM
-         ,
-         ordered_unique< tag< by_last_update >,
-            composite_key< comment_object,
-               member< comment_object, account_name_type, &comment_object::parent_author >,
-               member< comment_object, time_point_sec, &comment_object::last_update >,
-               member< comment_object, comment_id_type, &comment_object::id >
-            >,
-            composite_key_compare< std::less< account_name_type >, std::greater< time_point_sec >, std::less< comment_id_type > >
-         >,
-         ordered_unique< tag< by_author_last_update >,
-            composite_key< comment_object,
-               member< comment_object, account_name_type, &comment_object::author >,
-               member< comment_object, time_point_sec, &comment_object::last_update >,
-               member< comment_object, comment_id_type, &comment_object::id >
-            >,
-            composite_key_compare< std::less< account_name_type >, std::greater< time_point_sec >, std::less< comment_id_type > >
-         >
-#endif
       >,
       allocator< comment_object >
    > comment_index;
@@ -244,8 +208,8 @@ namespace amalgam { namespace chain {
 
 FC_REFLECT( amalgam::chain::comment_object,
              (id)(author)(permlink)
-             (category)(parent_author)(parent_permlink)
-             (title)(body)(json_metadata)(last_update)(created)(active)(last_payout)
+             (parent_author)(parent_permlink)
+             (json_metadata)(last_update)(created)(active)(last_payout)
              (depth)(children)
              (net_rshares)(abs_rshares)(vote_rshares)
              (children_abs_rshares)(cashout_time)(max_cashout_time)

@@ -56,8 +56,6 @@ namespace amalgam { namespace chain {
          asset       confidential_abd_supply    = asset( 0, ABD_SYMBOL ); ///< total asset held in confidential balances
          asset       total_vesting_fund_amalgam = asset( 0, AMALGAM_SYMBOL );
          asset       total_vesting_shares       = asset( 0, VESTS_SYMBOL );
-         asset       total_reward_fund_amalgam  = asset( 0, AMALGAM_SYMBOL );
-         fc::uint128 total_reward_shares2       = 0; ///< the running total of REWARD^2
          asset       pending_rewarded_vesting_shares  = asset( 0, VESTS_SYMBOL );
          asset       pending_rewarded_vesting_amalgam = asset( 0, AMALGAM_SYMBOL );
 
@@ -141,8 +139,6 @@ FC_REFLECT( amalgam::chain::dynamic_global_property_object,
              (confidential_abd_supply)
              (total_vesting_fund_amalgam)
              (total_vesting_shares)
-             (total_reward_fund_amalgam)
-             (total_reward_shares2)
              (pending_rewarded_vesting_shares)
              (pending_rewarded_vesting_amalgam)
              (abd_interest_rate)

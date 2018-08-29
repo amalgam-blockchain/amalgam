@@ -35,13 +35,10 @@ struct comment_api_obj
 {
    comment_api_obj( const chain::comment_object& o ):
       id( o.id ),
-      category( to_string( o.category ) ),
       parent_author( o.parent_author ),
       parent_permlink( to_string( o.parent_permlink ) ),
       author( o.author ),
       permlink( to_string( o.permlink ) ),
-      title( to_string( o.title ) ),
-      body( to_string( o.body ) ),
       json_metadata( to_string( o.json_metadata ) ),
       last_update( o.last_update ),
       created( o.created ),
@@ -77,14 +74,11 @@ struct comment_api_obj
    comment_api_obj(){}
 
    comment_id_type   id;
-   string            category;
    account_name_type parent_author;
    string            parent_permlink;
    account_name_type author;
    string            permlink;
 
-   string            title;
-   string            body;
    string            json_metadata;
    time_point_sec    last_update;
    time_point_sec    created;
@@ -465,8 +459,8 @@ struct dynamic_global_property_api_obj : public dynamic_global_property_object
 
 FC_REFLECT( amalgam::app::comment_api_obj,
              (id)(author)(permlink)
-             (category)(parent_author)(parent_permlink)
-             (title)(body)(json_metadata)(last_update)(created)(active)(last_payout)
+             (parent_author)(parent_permlink)
+             (json_metadata)(last_update)(created)(active)(last_payout)
              (depth)(children)
              (net_rshares)(abs_rshares)(vote_rshares)
              (children_abs_rshares)(cashout_time)(max_cashout_time)
