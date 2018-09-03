@@ -307,7 +307,7 @@ void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
    const auto& auth = _db.get_account( o.author );
    FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
 
-   const auto& comment = _db.get_comment( o.permlink );
+   const auto& comment = _db.get_comment( o.author, o.permlink );
    FC_ASSERT( comment.children == 0, "Cannot delete a comment with replies." );
 
    FC_ASSERT( comment.cashout_time != fc::time_point_sec::maximum() );
@@ -328,7 +328,7 @@ void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
    /// this loop can be skipped for validate-only nodes as it is merely gathering stats for indices
    if( comment.parent_author != AMALGAM_ROOT_POST_PARENT )
    {
-      auto parent = &_db.get_comment( comment.parent_permlink );
+      auto parent = &_db.get_comment( comment.parent_author, comment.parent_permlink );
       auto now = _db.head_block_time();
       while( parent )
       {
@@ -338,7 +338,7 @@ void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
          });
    #ifndef IS_LOW_MEM
          if( parent->parent_author != AMALGAM_ROOT_POST_PARENT )
-            parent = &_db.get_comment( parent->parent_permlink );
+            parent = &_db.get_comment( parent->parent_author, parent->parent_permlink );
          else
    #endif
             parent = nullptr;
@@ -379,7 +379,7 @@ void comment_options_evaluator::do_apply( const comment_options_operation& o )
    const auto& auth = _db.get_account( o.author );
    FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
 
-   const auto& comment = _db.get_comment( o.permlink );
+   const auto& comment = _db.get_comment( o.author, o.permlink );
    if( !o.allow_curation_rewards || !o.allow_votes || o.max_accepted_payout < comment.max_accepted_payout )
       FC_ASSERT( comment.abs_rshares == 0, "One of the included comment options requires the comment to have no rshares allocated to it." );
 
@@ -404,7 +404,7 @@ void comment_options_evaluator::do_apply( const comment_options_operation& o )
 void comment_evaluator::do_apply( const comment_operation& o )
 { try {
    const auto& by_permlink_idx = _db.get_index< comment_index >().indices().get< by_permlink >();
-   auto itr = by_permlink_idx.find( o.permlink );
+   auto itr = by_permlink_idx.find( boost::make_tuple( o.author, o.permlink ) );
 
    const auto& auth = _db.get_account( o.author ); /// prove it exists
 
@@ -415,7 +415,7 @@ void comment_evaluator::do_apply( const comment_operation& o )
    const comment_object* parent = nullptr;
    if( o.parent_author != AMALGAM_ROOT_POST_PARENT )
    {
-      parent = &_db.get_comment( o.parent_permlink );
+      parent = &_db.get_comment( o.parent_author, o.parent_permlink );
       FC_ASSERT( parent->depth < AMALGAM_MAX_COMMENT_DEPTH, "Comment is nested ${x} posts deep, maximum depth is ${y}.", ("x",parent->depth)("y",AMALGAM_MAX_COMMENT_DEPTH) );
    }
 
@@ -497,7 +497,7 @@ void comment_evaluator::do_apply( const comment_operation& o )
          });
 #ifndef IS_LOW_MEM
          if( parent->parent_author != AMALGAM_ROOT_POST_PARENT )
-            parent = &_db.get_comment( parent->parent_permlink );
+            parent = &_db.get_comment( parent->parent_author, parent->parent_permlink );
          else
 #endif
             parent = nullptr;
@@ -947,10 +947,7 @@ void account_witness_vote_evaluator::do_apply( const account_witness_vote_operat
 
 void vote_evaluator::do_apply( const vote_operation& o )
 { try {
-   const auto& comment = _db.get_comment( o.permlink );
-   
-   FC_ASSERT( comment.author == o.author, "Wrong author specified." );
-   
+   const auto& comment = _db.get_comment( o.author, o.permlink );
    const auto& voter   = _db.get_account( o.voter );
 
    FC_ASSERT( !(voter.owner_challenged || voter.active_challenged ), "Operation cannot be processed because the account is currently challenged." );

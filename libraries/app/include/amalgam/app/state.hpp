@@ -44,8 +44,6 @@ namespace amalgam { namespace app {
 
       asset                       pending_payout_value; ///< abd
       asset                       total_pending_payout_value; ///< abd including replies
-      vector<vote_state>          active_votes;
-      vector<string>              replies; ///< author/slug mapping
       share_type                  author_reputation = 0;
       asset                       promoted = asset(0, ABD_SYMBOL);
    };
@@ -98,7 +96,7 @@ FC_REFLECT_DERIVED( amalgam::app::extended_account,
 FC_REFLECT( amalgam::app::vote_state, (voter)(weight)(rshares)(percent)(reputation)(time) );
 FC_REFLECT( amalgam::app::account_vote, (authorperm)(weight)(rshares)(percent)(time) );
 
-FC_REFLECT_DERIVED( amalgam::app::discussion, (amalgam::app::comment_api_obj), (pending_payout_value)(total_pending_payout_value)(active_votes)(replies)(author_reputation)(promoted) )
+FC_REFLECT_DERIVED( amalgam::app::discussion, (amalgam::app::comment_api_obj), (pending_payout_value)(total_pending_payout_value)(author_reputation)(promoted) )
 
 FC_REFLECT_DERIVED( amalgam::app::extended_limit_order, (amalgam::app::limit_order_api_obj), (real_price)(rewarded) )
 FC_REFLECT( amalgam::app::order_history_item, (time)(type)(abd_quantity)(amalgam_quantity)(real_price) );

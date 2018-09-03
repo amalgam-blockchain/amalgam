@@ -368,24 +368,24 @@ const account_object* database::find_account( const account_name_type& name )con
    return find< account_object, by_name >( name );
 }
 
-const comment_object& database::get_comment( const shared_string& permlink )const
+const comment_object& database::get_comment( const account_name_type& author, const shared_string& permlink )const
 { try {
-   return get< comment_object, by_permlink >( permlink );
-} FC_CAPTURE_AND_RETHROW( (permlink) ) }
+   return get< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
+} FC_CAPTURE_AND_RETHROW( (author)(permlink) ) }
 
-const comment_object* database::find_comment( const shared_string& permlink )const
+const comment_object* database::find_comment( const account_name_type& author, const shared_string& permlink )const
 {
-   return find< comment_object, by_permlink >( permlink );
+   return find< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
 }
 
-const comment_object& database::get_comment( const string& permlink )const
+const comment_object& database::get_comment( const account_name_type& author, const string& permlink )const
 { try {
-   return get< comment_object, by_permlink >( permlink );
-} FC_CAPTURE_AND_RETHROW( (permlink) ) }
+   return get< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
+} FC_CAPTURE_AND_RETHROW( (author)(permlink) ) }
 
-const comment_object* database::find_comment( const string& permlink )const
+const comment_object* database::find_comment( const account_name_type& author, const string& permlink )const
 {
-   return find< comment_object, by_permlink >( permlink );
+   return find< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
 }
 
 const escrow_object& database::get_escrow( const account_name_type& name, uint32_t escrow_id )const

@@ -296,12 +296,12 @@ class database_api
        */
       verify_signatures_return verify_signatures( const verify_signatures_args& args )const;
 
-      vector<vote_state> get_active_votes( string permlink )const;
+      vector<vote_state> get_active_votes( string author, string permlink )const;
       vector<account_vote> get_account_votes( string voter )const;
 
 
-      discussion           get_content( string permlink )const;
-      vector<discussion>   get_content_replies( string parent_permlink )const;
+      discussion           get_content( string author, string permlink )const;
+      vector<discussion>   get_content_replies( string parent, string parent_permlink )const;
 
       /**
        *  Account operations have sequence numbers from 0 to N where N is the most recent operation. This method

@@ -919,29 +919,28 @@ vector<convert_request_api_obj> database_api::get_conversion_requests( const str
    });
 }
 
-discussion database_api::get_content( string permlink )const
+discussion database_api::get_content( string author, string permlink )const
 {
    return my->_db.with_read_lock( [&]()
    {
       const auto& by_permlink_idx = my->_db.get_index< comment_index >().indices().get< by_permlink >();
-      auto itr = by_permlink_idx.find( permlink );
+      auto itr = by_permlink_idx.find( boost::make_tuple( author, permlink ) );
       if( itr != by_permlink_idx.end() )
       {
          discussion result(*itr);
          set_pending_payout(result);
-         result.active_votes = get_active_votes( permlink );
          return result;
       }
       return discussion();
    });
 }
 
-vector<vote_state> database_api::get_active_votes( string permlink )const
+vector<vote_state> database_api::get_active_votes( string author, string permlink )const
 {
    return my->_db.with_read_lock( [&]()
    {
       vector<vote_state> result;
-      const auto& comment = my->_db.get_comment( permlink );
+      const auto& comment = my->_db.get_comment( author, permlink );
       const auto& idx = my->_db.get_index<comment_vote_index>().indices().get< by_comment_voter >();
       comment_id_type cid(comment.id);
       auto itr = idx.lower_bound( cid );
@@ -1001,7 +1000,7 @@ u256 to256( const fc::uint128& t )
 void database_api::set_pending_payout( discussion& d )const
 {
    const auto& hist = my->_db.get_feed_history();
-   const auto& rf = my->_db.get_reward_fund( my->_db.get_comment( d.permlink ) );
+   const auto& rf = my->_db.get_reward_fund( my->_db.get_comment( d.author, d.permlink ) );
 
    asset pot = rf.reward_balance;
 
@@ -1025,14 +1024,15 @@ void database_api::set_pending_payout( discussion& d )const
       d.cashout_time = my->_db.calculate_discussion_payout_time( my->_db.get< comment_object >( d.id ) );
 }
 
-vector<discussion> database_api::get_content_replies( string permlink )const
+vector<discussion> database_api::get_content_replies( string author, string permlink )const
 {
    return my->_db.with_read_lock( [&]()
    {
+      account_name_type acc_name = account_name_type( author );
       const auto& by_parent_idx = my->_db.get_index< comment_index >().indices().get< by_parent >();
-      auto itr = by_parent_idx.find( permlink );
+      auto itr = by_parent_idx.find( boost::make_tuple( acc_name, permlink ) );
       vector<discussion> result;
-      while( itr != by_parent_idx.end() && to_string( itr->parent_permlink ) == permlink )
+      while( itr != by_parent_idx.end() && itr->parent_author == author && to_string( itr->parent_permlink ) == permlink )
       {
          result.push_back( discussion( *itr ) );
          set_pending_payout( result.back() );

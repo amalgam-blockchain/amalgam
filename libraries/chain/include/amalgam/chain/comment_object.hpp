@@ -184,8 +184,11 @@ namespace amalgam { namespace chain {
             >
          >,
          ordered_unique< tag< by_permlink >, /// used by consensus to find posts referenced in ops
-            member< comment_object, shared_string, &comment_object::permlink >,
-            strcmp_less
+            composite_key< comment_object,
+               member< comment_object, account_name_type, &comment_object::author >,
+               member< comment_object, shared_string, &comment_object::permlink >
+            >,
+            composite_key_compare< std::less< account_name_type >, strcmp_less >
          >,
          ordered_unique< tag< by_root >,
             composite_key< comment_object,
@@ -195,10 +198,11 @@ namespace amalgam { namespace chain {
          >,
          ordered_unique< tag< by_parent >,
             composite_key< comment_object,
+               member< comment_object, account_name_type, &comment_object::parent_author >,
                member< comment_object, shared_string, &comment_object::parent_permlink >,
                member< comment_object, comment_id_type, &comment_object::id >
             >,
-            composite_key_compare< strcmp_less, std::less< comment_id_type > >
+            composite_key_compare< std::less< account_name_type >, strcmp_less, std::less< comment_id_type > >
          >
       >,
       allocator< comment_object >
