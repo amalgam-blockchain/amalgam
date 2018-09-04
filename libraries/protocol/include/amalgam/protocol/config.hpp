@@ -17,7 +17,7 @@
 #define AMALGAM_SYMBOL_NAME                     "AMALGAM"
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
-#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1534377600))
+#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1536019200))
 #define AMALGAM_CASHOUT_WINDOW_SECONDS          (60*60) /// 1 hr
 #define AMALGAM_VOTE_CHANGE_LOCKOUT_PERIOD      (60*10) /// 10 minutes
 #define AMALGAM_UPVOTE_LOCKOUT                  (fc::minutes(5))
@@ -40,7 +40,7 @@
 #define AMALGAM_SYMBOL_NAME                     "AMALGAM"
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
-#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1534377600))
+#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1536019200))
 #define AMALGAM_CASHOUT_WINDOW_SECONDS          (60*60*24*7)  /// 7 days
 #define AMALGAM_VOTE_CHANGE_LOCKOUT_PERIOD      (60*60*2)     /// 2 hours
 #define AMALGAM_UPVOTE_LOCKOUT                  (fc::hours(12))
