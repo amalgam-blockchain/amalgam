@@ -22,8 +22,7 @@ enum witness_plugin_object_type
 
 enum bandwidth_type
 {
-   post,    ///< Rate limiting posting reward eligibility over time
-   forum,   ///< Rate limiting for all forum related actins
+   forum,   ///< Rate limiting for all forum related actions
    market   ///< Rate limiting for all other actions
 };
 
@@ -156,7 +155,7 @@ typedef multi_index_container <
 
 } } // amalgam::witness
 
-FC_REFLECT_ENUM( amalgam::witness::bandwidth_type, (post)(forum)(market) )
+FC_REFLECT_ENUM( amalgam::witness::bandwidth_type, (forum)(market) )
 
 FC_REFLECT( amalgam::witness::account_bandwidth_object,
             (id)(account)(type)(average_bandwidth)(lifetime_bandwidth)(last_bandwidth_update) )

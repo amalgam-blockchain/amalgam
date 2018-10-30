@@ -5,8 +5,6 @@
 #include <amalgam/chain/witness_objects.hpp>
 #include <amalgam/chain/block_summary_object.hpp>
 
-#include <amalgam/chain/util/reward.hpp>
-
 #include <fc/uint128.hpp>
 #include <fc/utf8.hpp>
 
@@ -14,31 +12,6 @@
 
 namespace amalgam { namespace chain {
    using fc::uint128_t;
-
-inline void validate_permlink_0_1( const string& permlink )
-{
-   FC_ASSERT( permlink.size() > AMALGAM_MIN_PERMLINK_LENGTH && permlink.size() < AMALGAM_MAX_PERMLINK_LENGTH, "Permlink is not a valid size." );
-
-   for( auto c : permlink )
-   {
-      switch( c )
-      {
-         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-         case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case '-':
-            break;
-         default:
-            FC_ASSERT( false, "Invalid permlink character: ${s}", ("s", std::string() + c ) );
-      }
-   }
-}
-
-struct strcmp_equal
-{
-   bool operator()( const shared_string& a, const string& b )
-   {
-      return a.size() == b.size() || std::strcmp( a.c_str(), b.c_str() ) == 0;
-   }
-};
 
 void witness_update_evaluator::do_apply( const witness_update_operation& o )
 {
@@ -85,8 +58,8 @@ void account_create_evaluator::do_apply( const account_create_operation& o )
    FC_ASSERT( creator.balance >= o.fee, "Insufficient balance to create account.", ( "creator.balance", creator.balance )( "required", o.fee ) );
 
    const witness_schedule_object& wso = _db.get_witness_schedule_object();
-   FC_ASSERT( o.fee >= asset( wso.median_props.account_creation_fee.amount * AMALGAM_CREATE_ACCOUNT_WITH_AMALGAM_MODIFIER, AMALGAM_SYMBOL ), "Insufficient Fee: ${f} required, ${p} provided.",
-              ("f", asset( wso.median_props.account_creation_fee.amount * AMALGAM_CREATE_ACCOUNT_WITH_AMALGAM_MODIFIER, AMALGAM_SYMBOL ) )
+   FC_ASSERT( o.fee >= asset( wso.median_props.account_creation_fee.amount, AMALGAM_SYMBOL ), "Insufficient Fee: ${f} required, ${p} provided.",
+              ("f", asset( wso.median_props.account_creation_fee.amount, AMALGAM_SYMBOL ) )
               ("p", o.fee) );
 
    for( auto& a : o.owner.account_auths )
@@ -113,7 +86,6 @@ void account_create_evaluator::do_apply( const account_create_operation& o )
       acc.name = o.new_account_name;
       acc.memo_key = o.memo_key;
       acc.created = props.time;
-      acc.last_vote_time = props.time;
       acc.mined = false;
 
       acc.recovery_account = o.creator;
@@ -135,98 +107,6 @@ void account_create_evaluator::do_apply( const account_create_operation& o )
    if( o.fee.amount > 0 )
       _db.create_vesting( new_account, o.fee );
 }
-
-void account_create_with_delegation_evaluator::do_apply( const account_create_with_delegation_operation& o )
-{
-   const auto& creator = _db.get_account( o.creator );
-   const auto& props = _db.get_dynamic_global_properties();
-   const witness_schedule_object& wso = _db.get_witness_schedule_object();
-
-   FC_ASSERT( creator.balance >= o.fee, "Insufficient balance to create account.",
-               ( "creator.balance", creator.balance )
-               ( "required", o.fee ) );
-
-   FC_ASSERT( creator.vesting_shares - creator.delegated_vesting_shares - asset( creator.to_withdraw - creator.withdrawn, VESTS_SYMBOL ) >= o.delegation, "Insufficient vesting shares to delegate to new account.",
-               ( "creator.vesting_shares", creator.vesting_shares )
-               ( "creator.delegated_vesting_shares", creator.delegated_vesting_shares )( "required", o.delegation ) );
-
-   auto target_delegation = asset( wso.median_props.account_creation_fee.amount * AMALGAM_CREATE_ACCOUNT_WITH_AMALGAM_MODIFIER * AMALGAM_CREATE_ACCOUNT_DELEGATION_RATIO, AMALGAM_SYMBOL ) * props.get_vesting_share_price();
-
-   auto current_delegation = asset( o.fee.amount * AMALGAM_CREATE_ACCOUNT_DELEGATION_RATIO, AMALGAM_SYMBOL ) * props.get_vesting_share_price() + o.delegation;
-
-   FC_ASSERT( current_delegation >= target_delegation, "Insufficient Delegation ${f} required, ${p} provided.",
-               ("f", target_delegation )
-               ( "p", current_delegation )
-               ( "account_creation_fee", wso.median_props.account_creation_fee )
-               ( "o.fee", o.fee )
-               ( "o.delegation", o.delegation ) );
-
-   FC_ASSERT( o.fee >= wso.median_props.account_creation_fee, "Insufficient Fee: ${f} required, ${p} provided.",
-               ("f", wso.median_props.account_creation_fee)
-               ("p", o.fee) );
-
-   for( auto& a : o.owner.account_auths )
-   {
-      _db.get_account( a.first );
-   }
-
-   for( auto& a : o.active.account_auths )
-   {
-      _db.get_account( a.first );
-   }
-
-   for( auto& a : o.posting.account_auths )
-   {
-      _db.get_account( a.first );
-   }
-
-   _db.modify( creator, [&]( account_object& c )
-   {
-      c.balance -= o.fee;
-      c.delegated_vesting_shares += o.delegation;
-   });
-
-   const auto& new_account = _db.create< account_object >( [&]( account_object& acc )
-   {
-      acc.name = o.new_account_name;
-      acc.memo_key = o.memo_key;
-      acc.created = props.time;
-      acc.last_vote_time = props.time;
-      acc.mined = false;
-
-      acc.recovery_account = o.creator;
-
-      acc.received_vesting_shares = o.delegation;
-
-      #ifndef IS_LOW_MEM
-         from_string( acc.json_metadata, o.json_metadata );
-      #endif
-   });
-
-   _db.create< account_authority_object >( [&]( account_authority_object& auth )
-   {
-      auth.account = o.new_account_name;
-      auth.owner = o.owner;
-      auth.active = o.active;
-      auth.posting = o.posting;
-      auth.last_owner_update = fc::time_point_sec::min();
-   });
-
-   if( o.delegation.amount > 0 )
-   {
-      _db.create< vesting_delegation_object >( [&]( vesting_delegation_object& vdo )
-      {
-         vdo.delegator = o.creator;
-         vdo.delegatee = o.new_account_name;
-         vdo.vesting_shares = o.delegation;
-         vdo.min_delegation_time = _db.head_block_time() + AMALGAM_CREATE_ACCOUNT_DELEGATION_TIME;
-      });
-   }
-
-   if( o.fee.amount > 0 )
-      _db.create_vesting( new_account, o.fee );
-}
-
 
 void account_update_evaluator::do_apply( const account_update_operation& o )
 {
@@ -273,12 +153,6 @@ void account_update_evaluator::do_apply( const account_update_operation& o )
       if( o.memo_key != public_key_type() )
             acc.memo_key = o.memo_key;
 
-      if( ( o.active || o.owner ) && acc.active_challenged )
-      {
-         acc.active_challenged = false;
-         acc.last_active_proved = _db.head_block_time();
-      }
-
       acc.last_account_update = _db.head_block_time();
 
       #ifndef IS_LOW_MEM
@@ -295,248 +169,7 @@ void account_update_evaluator::do_apply( const account_update_operation& o )
          if( o.posting ) auth.posting = *o.posting;
       });
    }
-
 }
-
-
-/**
- *  Because net_rshares is 0 there is no need to update any pending payout calculations or parent posts.
- */
-void delete_comment_evaluator::do_apply( const delete_comment_operation& o )
-{
-   const auto& auth = _db.get_account( o.author );
-   FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
-
-   const auto& comment = _db.get_comment( o.author, o.permlink );
-   FC_ASSERT( comment.children == 0, "Cannot delete a comment with replies." );
-
-   FC_ASSERT( comment.cashout_time != fc::time_point_sec::maximum() );
-
-   FC_ASSERT( comment.net_rshares <= 0, "Cannot delete a comment with net positive votes." );
-
-   if( comment.net_rshares > 0 ) return;
-
-   const auto& vote_idx = _db.get_index<comment_vote_index>().indices().get<by_comment_voter>();
-
-   auto vote_itr = vote_idx.lower_bound( comment_id_type(comment.id) );
-   while( vote_itr != vote_idx.end() && vote_itr->comment == comment.id ) {
-      const auto& cur_vote = *vote_itr;
-      ++vote_itr;
-      _db.remove(cur_vote);
-   }
-
-   /// this loop can be skipped for validate-only nodes as it is merely gathering stats for indices
-   if( comment.parent_author != AMALGAM_ROOT_POST_PARENT )
-   {
-      auto parent = &_db.get_comment( comment.parent_author, comment.parent_permlink );
-      auto now = _db.head_block_time();
-      while( parent )
-      {
-         _db.modify( *parent, [&]( comment_object& p ){
-            p.children--;
-            p.active = now;
-         });
-   #ifndef IS_LOW_MEM
-         if( parent->parent_author != AMALGAM_ROOT_POST_PARENT )
-            parent = &_db.get_comment( parent->parent_author, parent->parent_permlink );
-         else
-   #endif
-            parent = nullptr;
-      }
-   }
-
-   _db.remove( comment );
-}
-
-struct comment_options_extension_visitor
-{
-   comment_options_extension_visitor( const comment_object& c, database& db ) : _c( c ), _db( db ) {}
-
-   typedef void result_type;
-
-   const comment_object& _c;
-   database& _db;
-
-   void operator()( const comment_payout_beneficiaries& cpb ) const
-   {
-      FC_ASSERT( _c.beneficiaries.size() == 0, "Comment already has beneficiaries specified." );
-      FC_ASSERT( _c.abs_rshares == 0, "Comment must not have been voted on before specifying beneficiaries." );
-
-      _db.modify( _c, [&]( comment_object& c )
-      {
-         for( auto& b : cpb.beneficiaries )
-         {
-            auto acc = _db.find< account_object, by_name >( b.account );
-            FC_ASSERT( acc != nullptr, "Beneficiary \"${a}\" must exist.", ("a", b.account) );
-            c.beneficiaries.push_back( b );
-         }
-      });
-   }
-};
-
-void comment_options_evaluator::do_apply( const comment_options_operation& o )
-{
-   const auto& auth = _db.get_account( o.author );
-   FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
-
-   const auto& comment = _db.get_comment( o.author, o.permlink );
-   if( !o.allow_curation_rewards || !o.allow_votes || o.max_accepted_payout < comment.max_accepted_payout )
-      FC_ASSERT( comment.abs_rshares == 0, "One of the included comment options requires the comment to have no rshares allocated to it." );
-
-   FC_ASSERT( comment.allow_curation_rewards >= o.allow_curation_rewards, "Curation rewards cannot be re-enabled." );
-   FC_ASSERT( comment.allow_votes >= o.allow_votes, "Voting cannot be re-enabled." );
-   FC_ASSERT( comment.max_accepted_payout >= o.max_accepted_payout, "A comment cannot accept a greater payout." );
-   FC_ASSERT( comment.percent_amalgam_dollars >= o.percent_amalgam_dollars, "A comment cannot accept a greater percent ABD." );
-
-   _db.modify( comment, [&]( comment_object& c ) {
-       c.max_accepted_payout   = o.max_accepted_payout;
-       c.percent_amalgam_dollars = o.percent_amalgam_dollars;
-       c.allow_votes           = o.allow_votes;
-       c.allow_curation_rewards = o.allow_curation_rewards;
-   });
-
-   for( auto& e : o.extensions )
-   {
-      e.visit( comment_options_extension_visitor( comment, _db ) );
-   }
-}
-
-void comment_evaluator::do_apply( const comment_operation& o )
-{ try {
-   const auto& by_permlink_idx = _db.get_index< comment_index >().indices().get< by_permlink >();
-   auto itr = by_permlink_idx.find( boost::make_tuple( o.author, o.permlink ) );
-
-   const auto& auth = _db.get_account( o.author ); /// prove it exists
-
-   FC_ASSERT( !(auth.owner_challenged || auth.active_challenged ), "Operation cannot be processed because account is currently challenged." );
-
-   comment_id_type id;
-
-   const comment_object* parent = nullptr;
-   if( o.parent_author != AMALGAM_ROOT_POST_PARENT )
-   {
-      parent = &_db.get_comment( o.parent_author, o.parent_permlink );
-      FC_ASSERT( parent->depth < AMALGAM_MAX_COMMENT_DEPTH, "Comment is nested ${x} posts deep, maximum depth is ${y}.", ("x",parent->depth)("y",AMALGAM_MAX_COMMENT_DEPTH) );
-   }
-
-   if( o.json_metadata.size() )
-      FC_ASSERT( fc::is_utf8( o.json_metadata ), "JSON Metadata must be UTF-8" );
-
-   auto now = _db.head_block_time();
-
-   if ( itr == by_permlink_idx.end() )
-   {
-      if( o.parent_author != AMALGAM_ROOT_POST_PARENT )
-      {
-         FC_ASSERT( _db.get( parent->root_comment ).allow_replies, "The parent comment has disabled replies." );
-      }
-
-      if( o.parent_author == AMALGAM_ROOT_POST_PARENT )
-         FC_ASSERT( (now - auth.last_root_post ) > AMALGAM_MIN_ROOT_COMMENT_INTERVAL, "You may only post once every 1 second.", ("now",now)("last_root_post", auth.last_root_post) );
-      else
-         FC_ASSERT( (now - auth.last_post) > AMALGAM_MIN_REPLY_INTERVAL, "You may only comment once every 1 second.", ("now",now)("auth.last_post",auth.last_post) );
-
-      uint16_t reward_weight = AMALGAM_100_PERCENT;
-      uint64_t post_bandwidth = auth.post_bandwidth;
-
-      _db.modify( auth, [&]( account_object& a ) {
-         if( o.parent_author == AMALGAM_ROOT_POST_PARENT )
-         {
-            a.last_root_post = now;
-            a.post_bandwidth = uint32_t( post_bandwidth );
-         }
-         a.last_post = now;
-         a.post_count++;
-      });
-
-      const auto& new_comment = _db.create< comment_object >( [&]( comment_object& com )
-      {
-         if ( o.parent_author != AMALGAM_ROOT_POST_PARENT )
-            validate_permlink_0_1( o.parent_permlink );
-         validate_permlink_0_1( o.permlink );
-
-         com.author = o.author;
-         from_string( com.permlink, o.permlink );
-         com.last_update = _db.head_block_time();
-         com.created = com.last_update;
-         com.active = com.last_update;
-         com.last_payout = fc::time_point_sec::min();
-         com.max_cashout_time = fc::time_point_sec::maximum();
-         com.reward_weight = reward_weight;
-
-         if ( o.parent_author == AMALGAM_ROOT_POST_PARENT )
-         {
-            com.parent_author = "";
-            from_string( com.parent_permlink, "" );
-            com.root_comment = com.id;
-         }
-         else
-         {
-            com.parent_author = parent->author;
-            com.parent_permlink = parent->permlink;
-            com.depth = parent->depth + 1;
-            com.root_comment = parent->root_comment;
-         }
-
-         com.cashout_time = com.created + AMALGAM_CASHOUT_WINDOW_SECONDS;
-
-         #ifndef IS_LOW_MEM
-            if( ( o.json_metadata.size() ) )
-               from_string( com.json_metadata, o.json_metadata );
-         #endif
-      });
-
-      id = new_comment.id;
-
-/// this loop can be skipped for validate-only nodes as it is merely gathering stats for indices
-      auto now = _db.head_block_time();
-      while( parent ) {
-         _db.modify( *parent, [&]( comment_object& p ){
-            p.children++;
-            p.active = now;
-         });
-#ifndef IS_LOW_MEM
-         if( parent->parent_author != AMALGAM_ROOT_POST_PARENT )
-            parent = &_db.get_comment( parent->parent_author, parent->parent_permlink );
-         else
-#endif
-            parent = nullptr;
-      }
-
-   }
-   else // start edit case
-   {
-      const auto& comment = *itr;
-
-      _db.modify( comment, [&]( comment_object& com )
-      {
-         com.last_update   = _db.head_block_time();
-         com.active        = com.last_update;
-         strcmp_equal equal;
-
-         if( !parent )
-         {
-            FC_ASSERT( com.parent_author == account_name_type(), "The parent of a comment cannot change." );
-            FC_ASSERT( equal( com.parent_permlink, o.parent_permlink ), "The permlink of a comment cannot change." );
-         }
-         else
-         {
-            FC_ASSERT( com.parent_author == o.parent_author, "The parent of a comment cannot change." );
-            FC_ASSERT( equal( com.parent_permlink, o.parent_permlink ), "The permlink of a comment cannot change." );
-         }
-
-         #ifndef IS_LOW_MEM
-           if( o.json_metadata.size() )
-           {
-              from_string( com.json_metadata, o.json_metadata );
-           }
-         #endif
-
-      });
-
-   } // end EDIT case
-
-} FC_CAPTURE_AND_RETHROW( (o) ) }
 
 void escrow_transfer_evaluator::do_apply( const escrow_transfer_operation& o )
 {
@@ -546,7 +179,7 @@ void escrow_transfer_evaluator::do_apply( const escrow_transfer_operation& o )
       _db.get_account(o.to);
       _db.get_account(o.agent);
 
-      FC_ASSERT( o.ratification_deadline > _db.head_block_time(), "The escorw ratification deadline must be after head block time." );
+      FC_ASSERT( o.ratification_deadline > _db.head_block_time(), "The escrow ratification deadline must be after head block time." );
       FC_ASSERT( o.escrow_expiration > _db.head_block_time(), "The escrow expiration must be after head block time." );
 
       asset amalgam_spent = o.amalgam_amount;
@@ -720,15 +353,6 @@ void transfer_evaluator::do_apply( const transfer_operation& o )
 {
    const auto& from_account = _db.get_account(o.from);
    const auto& to_account = _db.get_account(o.to);
-
-   if( from_account.active_challenged )
-   {
-      _db.modify( from_account, [&]( account_object& a )
-      {
-         a.active_challenged = false;
-         a.last_active_proved = _db.head_block_time();
-      });
-   }
 
    FC_ASSERT( _db.get_balance( from_account, o.amount.symbol ) >= o.amount, "Account does not have sufficient funds for transfer." );
    _db.adjust_balance( from_account, -o.amount );
@@ -904,7 +528,6 @@ void account_witness_proxy_evaluator::do_apply( const account_witness_proxy_oper
    }
 }
 
-
 void account_witness_vote_evaluator::do_apply( const account_witness_vote_operation& o )
 {
    const auto& voter = _db.get_account( o.account );
@@ -944,243 +567,6 @@ void account_witness_vote_evaluator::do_apply( const account_witness_vote_operat
       _db.remove( *itr );
    }
 }
-
-void vote_evaluator::do_apply( const vote_operation& o )
-{ try {
-   const auto& comment = _db.get_comment( o.author, o.permlink );
-   const auto& voter   = _db.get_account( o.voter );
-
-   FC_ASSERT( !(voter.owner_challenged || voter.active_challenged ), "Operation cannot be processed because the account is currently challenged." );
-
-   FC_ASSERT( voter.can_vote, "Voter has declined their voting rights." );
-
-   if( o.weight > 0 ) FC_ASSERT( comment.allow_votes, "Votes are not allowed on the comment." );
-
-   if( _db.calculate_discussion_payout_time( comment ) == fc::time_point_sec::maximum() )
-   {
-#ifndef CLEAR_VOTES
-      const auto& comment_vote_idx = _db.get_index< comment_vote_index >().indices().get< by_comment_voter >();
-      auto itr = comment_vote_idx.find( std::make_tuple( comment.id, voter.id ) );
-
-      if( itr == comment_vote_idx.end() )
-         _db.create< comment_vote_object >( [&]( comment_vote_object& cvo )
-         {
-            cvo.voter = voter.id;
-            cvo.comment = comment.id;
-            cvo.vote_percent = o.weight;
-            cvo.last_update = _db.head_block_time();
-         });
-      else
-         _db.modify( *itr, [&]( comment_vote_object& cvo )
-         {
-            cvo.vote_percent = o.weight;
-            cvo.last_update = _db.head_block_time();
-         });
-#endif
-      return;
-   }
-
-   const auto& comment_vote_idx = _db.get_index< comment_vote_index >().indices().get< by_comment_voter >();
-   auto itr = comment_vote_idx.find( std::make_tuple( comment.id, voter.id ) );
-
-   int64_t elapsed_seconds   = (_db.head_block_time() - voter.last_vote_time).to_seconds();
-
-   FC_ASSERT( elapsed_seconds >= AMALGAM_MIN_VOTE_INTERVAL_SEC, "Can only vote once every 1 second." );
-
-   int64_t regenerated_power = (AMALGAM_100_PERCENT * elapsed_seconds) / AMALGAM_VOTE_REGENERATION_SECONDS;
-   int64_t current_power     = std::min( int64_t(voter.voting_power + regenerated_power), int64_t(AMALGAM_100_PERCENT) );
-   FC_ASSERT( current_power > 0, "Account currently does not have voting power." );
-
-   int64_t  abs_weight    = abs(o.weight);
-   int64_t  used_power    = (current_power * abs_weight) / AMALGAM_100_PERCENT;
-
-   const dynamic_global_property_object& dgpo = _db.get_dynamic_global_properties();
-
-   int64_t max_vote_denom = dgpo.vote_power_reserve_rate * AMALGAM_VOTE_REGENERATION_SECONDS / (60*60*24);
-   FC_ASSERT( max_vote_denom > 0 );
-
-   used_power = (used_power + max_vote_denom - 1) / max_vote_denom;
-   FC_ASSERT( used_power <= current_power, "Account does not have enough power to vote." );
-
-   int64_t abs_rshares    = ((uint128_t(voter.effective_vesting_shares().amount.value) * used_power) / (AMALGAM_100_PERCENT)).to_uint64();
-
-   FC_ASSERT( abs_rshares > AMALGAM_VOTE_DUST_THRESHOLD || o.weight == 0, "Voting weight is too small, please accumulate more voting power or Solid Amalgam." );
-
-   // Lazily delete vote
-   if( itr != comment_vote_idx.end() && itr->num_changes == -1 )
-   {
-      FC_ASSERT( false, "Cannot vote again on a comment after payout." );
-
-      _db.remove( *itr );
-      itr = comment_vote_idx.end();
-   }
-
-   if( itr == comment_vote_idx.end() )
-   {
-      FC_ASSERT( o.weight != 0, "Vote weight cannot be 0." );
-      /// this is the rshares voting for or against the post
-      int64_t rshares        = o.weight < 0 ? -abs_rshares : abs_rshares;
-
-      if( rshares > 0 )
-      {
-         FC_ASSERT( _db.head_block_time() < comment.cashout_time - AMALGAM_UPVOTE_LOCKOUT, "Cannot increase payout within last twelve hours before payout." );
-      }
-
-      _db.modify( voter, [&]( account_object& a ){
-         a.voting_power = current_power - used_power;
-         a.last_vote_time = _db.head_block_time();
-      });
-
-      const auto& root = _db.get( comment.root_comment );
-
-      FC_ASSERT( abs_rshares > 0, "Cannot vote with 0 rshares." );
-
-      auto old_vote_rshares = comment.vote_rshares;
-
-      _db.modify( comment, [&]( comment_object& c ){
-         c.net_rshares += rshares;
-         c.abs_rshares += abs_rshares;
-         if( rshares > 0 )
-            c.vote_rshares += rshares;
-         if( rshares > 0 )
-            c.net_votes++;
-         else
-            c.net_votes--;
-      });
-
-      _db.modify( root, [&]( comment_object& c )
-      {
-         c.children_abs_rshares += abs_rshares;
-      });
-
-      uint64_t max_vote_weight = 0;
-
-      /** this verifies uniqueness of voter
-       *
-       *  cv.weight / c.total_vote_weight ==> % of rshares increase that is accounted for by the vote
-       *
-       *  W(R) = B * R / ( R + 2S )
-       *  W(R) is bounded above by B. B is fixed at 2^64 - 1, so all weights fit in a 64 bit integer.
-       *
-       *  The equation for an individual vote is:
-       *    W(R_N) - W(R_N-1), which is the delta increase of proportional weight
-       *
-       *  c.total_vote_weight =
-       *    W(R_1) - W(R_0) +
-       *    W(R_2) - W(R_1) + ...
-       *    W(R_N) - W(R_N-1) = W(R_N) - W(R_0)
-       *
-       *  Since W(R_0) = 0, c.total_vote_weight is also bounded above by B and will always fit in a 64 bit integer.
-       *
-      **/
-      _db.create<comment_vote_object>( [&]( comment_vote_object& cv ){
-         cv.voter   = voter.id;
-         cv.comment = comment.id;
-         cv.rshares = rshares;
-         cv.vote_percent = o.weight;
-         cv.last_update = _db.head_block_time();
-
-         bool curation_reward_eligible = rshares > 0 && (comment.last_payout == fc::time_point_sec()) && comment.allow_curation_rewards;
-
-         if( curation_reward_eligible )
-            curation_reward_eligible = _db.get_curation_rewards_percent( comment ) > 0;
-
-         if( curation_reward_eligible )
-         {
-            // cv.weight = W(R_1) - W(R_0)
-            const auto& reward_fund = _db.get_reward_fund( comment );
-            auto curve = reward_fund.curation_reward_curve;
-            uint64_t old_weight = util::evaluate_reward_curve( old_vote_rshares.value, curve, reward_fund.content_constant ).to_uint64();
-            uint64_t new_weight = util::evaluate_reward_curve( comment.vote_rshares.value, curve, reward_fund.content_constant ).to_uint64();
-            cv.weight = new_weight - old_weight;
-
-            max_vote_weight = cv.weight;
-
-            /// discount weight by time
-            uint128_t w(max_vote_weight);
-            uint64_t delta_t = std::min( uint64_t((cv.last_update - comment.created).to_seconds()), uint64_t(AMALGAM_REVERSE_AUCTION_WINDOW_SECONDS) );
-
-            w *= delta_t;
-            w /= AMALGAM_REVERSE_AUCTION_WINDOW_SECONDS;
-            cv.weight = w.to_uint64();
-         }
-         else
-         {
-            cv.weight = 0;
-         }
-      });
-
-      if( max_vote_weight ) // Optimization
-      {
-         _db.modify( comment, [&]( comment_object& c )
-         {
-            c.total_vote_weight += max_vote_weight;
-         });
-      }
-   }
-   else
-   {
-      FC_ASSERT( itr->num_changes < AMALGAM_MAX_VOTE_CHANGES, "Voter has used the maximum number of vote changes on this comment." );
-
-      FC_ASSERT( itr->vote_percent != o.weight, "You have already voted in a similar way." );
-
-      /// this is the rshares voting for or against the post
-      int64_t rshares        = o.weight < 0 ? -abs_rshares : abs_rshares;
-
-      if( itr->rshares < rshares )
-      {
-         FC_ASSERT( _db.head_block_time() < comment.cashout_time - AMALGAM_UPVOTE_LOCKOUT, "Cannot increase payout within last twelve hours before payout." );
-      }
-
-      _db.modify( voter, [&]( account_object& a ){
-         a.voting_power = current_power - used_power;
-         a.last_vote_time = _db.head_block_time();
-      });
-
-      const auto& root = _db.get( comment.root_comment );
-
-      _db.modify( comment, [&]( comment_object& c )
-      {
-         c.net_rshares -= itr->rshares;
-         c.net_rshares += rshares;
-         c.abs_rshares += abs_rshares;
-
-         /// TODO: figure out how to handle remove a vote (rshares == 0 )
-         if( rshares > 0 && itr->rshares < 0 )
-            c.net_votes += 2;
-         else if( rshares > 0 && itr->rshares == 0 )
-            c.net_votes += 1;
-         else if( rshares == 0 && itr->rshares < 0 )
-            c.net_votes += 1;
-         else if( rshares == 0 && itr->rshares > 0 )
-            c.net_votes -= 1;
-         else if( rshares < 0 && itr->rshares == 0 )
-            c.net_votes -= 1;
-         else if( rshares < 0 && itr->rshares > 0 )
-            c.net_votes -= 2;
-      });
-
-      _db.modify( root, [&]( comment_object& c )
-      {
-         c.children_abs_rshares += abs_rshares;
-      });
-
-      _db.modify( comment, [&]( comment_object& c )
-      {
-         c.total_vote_weight -= itr->weight;
-      });
-
-      _db.modify( *itr, [&]( comment_vote_object& cv )
-      {
-         cv.rshares = rshares;
-         cv.vote_percent = o.weight;
-         cv.last_update = _db.head_block_time();
-         cv.weight = 0;
-         cv.num_changes += 1;
-      });
-   }
-
-} FC_CAPTURE_AND_RETHROW( (o)) }
 
 void custom_evaluator::do_apply( const custom_operation& o ){}
 
@@ -1227,16 +613,6 @@ void custom_binary_evaluator::do_apply( const custom_binary_operation& o )
    {
       elog( "Unexpected exception applying custom json evaluator." );
    }
-}
-
-void pow_evaluator::do_apply( const pow_operation& o )
-{
-   FC_ASSERT( false, "pow is disabled." );
-}
-
-void pow2_evaluator::do_apply( const pow2_operation& o )
-{
-   FC_ASSERT( false, "pow2 is disabled." );
 }
 
 void feed_publish_evaluator::do_apply( const feed_publish_operation& o )
@@ -1323,33 +699,6 @@ void limit_order_create2_evaluator::do_apply( const limit_order_create2_operatio
 void limit_order_cancel_evaluator::do_apply( const limit_order_cancel_operation& o )
 {
    _db.cancel_order( _db.get_limit_order( o.owner, o.orderid ) );
-}
-
-void report_over_production_evaluator::do_apply( const report_over_production_operation& o )
-{
-   FC_ASSERT( false, "report_over_production_operation is disabled." );
-}
-
-void challenge_authority_evaluator::do_apply( const challenge_authority_operation& o )
-{
-   FC_ASSERT( false, "challenge_authority is disabled." );
-}
-
-void prove_authority_evaluator::do_apply( const prove_authority_operation& o )
-{
-   const auto& challenged = _db.get_account( o.challenged );
-   FC_ASSERT( challenged.owner_challenged || challenged.active_challenged, "Account is not challeneged. No need to prove authority." );
-
-   _db.modify( challenged, [&]( account_object& a )
-   {
-      a.active_challenged = false;
-      a.last_active_proved = _db.head_block_time();
-      if( o.require_owner )
-      {
-         a.owner_challenged = false;
-         a.last_owner_proved = _db.head_block_time();
-      }
-   });
 }
 
 void request_account_recovery_evaluator::do_apply( const request_account_recovery_operation& o )
@@ -1540,79 +889,6 @@ void decline_voting_rights_evaluator::do_apply( const decline_voting_rights_oper
    }
 }
 
-void reset_account_evaluator::do_apply( const reset_account_operation& op )
-{
-   FC_ASSERT( false, "Reset Account Operation is currently disabled." );
-/*
-   const auto& acnt = _db.get_account( op.account_to_reset );
-   auto band = _db.find< account_bandwidth_object, by_account_bandwidth_type >( boost::make_tuple( op.account_to_reset, bandwidth_type::old_forum ) );
-   if( band != nullptr )
-      FC_ASSERT( ( _db.head_block_time() - band->last_bandwidth_update ) > fc::days(60), "Account must be inactive for 60 days to be eligible for reset" );
-   FC_ASSERT( acnt.reset_account == op.reset_account, "Reset account does not match reset account on account." );
-
-   _db.update_owner_authority( acnt, op.new_owner_authority );
-*/
-}
-
-void set_reset_account_evaluator::do_apply( const set_reset_account_operation& op )
-{
-   FC_ASSERT( false, "Set Reset Account Operation is currently disabled." );
-/*
-   const auto& acnt = _db.get_account( op.account );
-   _db.get_account( op.reset_account );
-
-   FC_ASSERT( acnt.reset_account == op.current_reset_account, "Current reset account does not match reset account on account." );
-   FC_ASSERT( acnt.reset_account != op.reset_account, "Reset account must change" );
-
-   _db.modify( acnt, [&]( account_object& a )
-   {
-       a.reset_account = op.reset_account;
-   });
-*/
-}
-
-void claim_reward_balance_evaluator::do_apply( const claim_reward_balance_operation& op )
-{
-   const auto& acnt = _db.get_account( op.account );
-
-   FC_ASSERT( op.reward_amalgam <= acnt.reward_amalgam_balance, "Cannot claim that much AMALGAM. Claim: ${c} Actual: ${a}",
-      ("c", op.reward_amalgam)("a", acnt.reward_amalgam_balance) );
-   FC_ASSERT( op.reward_abd <= acnt.reward_abd_balance, "Cannot claim that much ABD. Claim: ${c} Actual: ${a}",
-      ("c", op.reward_abd)("a", acnt.reward_abd_balance) );
-   FC_ASSERT( op.reward_vests <= acnt.reward_vesting_balance, "Cannot claim that much VESTS. Claim: ${c} Actual: ${a}",
-      ("c", op.reward_vests)("a", acnt.reward_vesting_balance) );
-
-   asset reward_vesting_amalgam_to_move = asset( 0, AMALGAM_SYMBOL );
-   if( op.reward_vests == acnt.reward_vesting_balance )
-      reward_vesting_amalgam_to_move = acnt.reward_vesting_amalgam;
-   else
-      reward_vesting_amalgam_to_move = asset( ( ( uint128_t( op.reward_vests.amount.value ) * uint128_t( acnt.reward_vesting_amalgam.amount.value ) )
-         / uint128_t( acnt.reward_vesting_balance.amount.value ) ).to_uint64(), AMALGAM_SYMBOL );
-
-   _db.adjust_reward_balance( acnt, -op.reward_amalgam );
-   _db.adjust_reward_balance( acnt, -op.reward_abd );
-   _db.adjust_balance( acnt, op.reward_amalgam );
-   _db.adjust_balance( acnt, op.reward_abd );
-
-   _db.modify( acnt, [&]( account_object& a )
-   {
-      a.vesting_shares += op.reward_vests;
-      a.reward_vesting_balance -= op.reward_vests;
-      a.reward_vesting_amalgam -= reward_vesting_amalgam_to_move;
-   });
-
-   _db.modify( _db.get_dynamic_global_properties(), [&]( dynamic_global_property_object& gpo )
-   {
-      gpo.total_vesting_shares += op.reward_vests;
-      gpo.total_vesting_fund_amalgam += reward_vesting_amalgam_to_move;
-
-      gpo.pending_rewarded_vesting_shares -= op.reward_vests;
-      gpo.pending_rewarded_vesting_amalgam -= reward_vesting_amalgam_to_move;
-   });
-
-   _db.adjust_proxied_witness_votes( acnt, op.reward_vests.amount );
-}
-
 void delegate_vesting_shares_evaluator::do_apply( const delegate_vesting_shares_operation& op )
 {
    const auto& delegator = _db.get_account( op.delegator );
@@ -1712,6 +988,56 @@ void delegate_vesting_shares_evaluator::do_apply( const delegate_vesting_shares_
          _db.remove( *delegation );
       }
    }
+}
+
+void tbd1_evaluator::do_apply( const tbd1_operation& op )
+{
+   FC_ASSERT( false, "tbd1 operation is reserved for future use." );
+}
+
+void tbd2_evaluator::do_apply( const tbd2_operation& op )
+{
+   FC_ASSERT( false, "tbd2 operation is reserved for future use." );
+}
+
+void tbd3_evaluator::do_apply( const tbd3_operation& op )
+{
+   FC_ASSERT( false, "tbd3 operation is reserved for future use." );
+}
+
+void tbd4_evaluator::do_apply( const tbd4_operation& op )
+{
+   FC_ASSERT( false, "tbd4 operation is reserved for future use." );
+}
+
+void tbd5_evaluator::do_apply( const tbd5_operation& op )
+{
+   FC_ASSERT( false, "tbd5 operation is reserved for future use." );
+}
+
+void tbd6_evaluator::do_apply( const tbd6_operation& op )
+{
+   FC_ASSERT( false, "tbd6 operation is reserved for future use." );
+}
+
+void tbd7_evaluator::do_apply( const tbd7_operation& op )
+{
+   FC_ASSERT( false, "tbd7 operation is reserved for future use." );
+}
+
+void tbd8_evaluator::do_apply( const tbd8_operation& op )
+{
+   FC_ASSERT( false, "tbd8 operation is reserved for future use." );
+}
+
+void tbd9_evaluator::do_apply( const tbd9_operation& op )
+{
+   FC_ASSERT( false, "tbd9 operation is reserved for future use." );
+}
+
+void tbd10_evaluator::do_apply( const tbd10_operation& op )
+{
+   FC_ASSERT( false, "tbd10 operation is reserved for future use." );
 }
 
 } } // amalgam::chain

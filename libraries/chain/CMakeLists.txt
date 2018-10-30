@@ -1,4 +1,4 @@
-file(GLOB HEADERS "include/amalgam/chain/*.hpp" "include/amalgam/chain/util/*.hpp")
+file(GLOB HEADERS "include/amalgam/chain/*.hpp")
 
 if( MSVC )
    set( hardfork_hpp_file "${CMAKE_CURRENT_SOURCE_DIR}/include/amalgam/chain/hardfork.hpp" )
@@ -27,8 +27,6 @@ add_library( amalgam_chain
              amalgam_objects.cpp
              shared_authority.cpp
              block_log.cpp
-
-             util/reward.cpp
 
              ${HEADERS}
              ${hardfork_hpp_file}

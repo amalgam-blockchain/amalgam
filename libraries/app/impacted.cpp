@@ -55,31 +55,6 @@ struct get_impacted_account_visitor
       _impacted.insert( op.creator );
    }
 
-   void operator()( const account_create_with_delegation_operation& op )
-   {
-      _impacted.insert( op.new_account_name );
-      _impacted.insert( op.creator );
-   }
-
-   void operator()( const comment_operation& op )
-   {
-      _impacted.insert( op.author );
-      if( op.parent_author.size() )
-         _impacted.insert( op.parent_author );
-   }
-
-   void operator()( const challenge_authority_operation& op )
-   {
-      _impacted.insert( op.challenger );
-      _impacted.insert( op.challenged );
-   }
-
-   void operator()( const vote_operation& op )
-   {
-      _impacted.insert( op.voter );
-      _impacted.insert( op.author );
-   }
-
    void operator()( const transfer_operation& op )
    {
       _impacted.insert( op.from );
@@ -147,29 +122,6 @@ struct get_impacted_account_visitor
       _impacted.insert( op.publisher );
    }
 
-   void operator()( const pow_operation& op )
-   {
-      _impacted.insert( op.worker_account );
-   }
-
-   struct pow2_impacted_visitor
-   {
-      pow2_impacted_visitor(){}
-
-      typedef const account_name_type& result_type;
-
-      template< typename WorkType >
-      result_type operator()( const WorkType& work )const
-      {
-         return work.input.worker_account;
-      }
-   };
-
-   void operator()( const pow2_operation& op )
-   {
-      _impacted.insert( op.work.visit( pow2_impacted_visitor() ) );
-   }
-
    void operator()( const request_account_recovery_operation& op )
    {
       _impacted.insert( op.account_to_recover );
@@ -204,23 +156,58 @@ struct get_impacted_account_visitor
       _impacted.insert( op.delegatee );
    }
 
+   void operator()( const tbd1_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd2_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd3_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd4_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd5_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd6_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd7_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd8_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd9_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
+   void operator()( const tbd10_operation& op )
+   {
+      _impacted.insert( op.from );
+   }
+
 
    // vops
-
-   void operator()( const author_reward_operation& op )
-   {
-      _impacted.insert( op.author );
-   }
-
-   void operator()( const curation_reward_operation& op )
-   {
-      _impacted.insert( op.curator );
-   }
-
-   void operator()( const liquidity_reward_operation& op )
-   {
-      _impacted.insert( op.owner );
-   }
 
    void operator()( const interest_operation& op )
    {
@@ -258,12 +245,6 @@ struct get_impacted_account_visitor
    void operator()( const return_vesting_delegation_operation& op )
    {
       _impacted.insert( op.account );
-   }
-
-   void operator()( const comment_benefactor_reward_operation& op )
-   {
-      _impacted.insert( op.benefactor );
-      _impacted.insert( op.author );
    }
 
    void operator()( const producer_reward_operation& op )

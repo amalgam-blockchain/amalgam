@@ -7,54 +7,6 @@
 
 namespace amalgam { namespace protocol {
 
-   struct author_reward_operation : public virtual_operation {
-      author_reward_operation(){}
-      author_reward_operation( const account_name_type& a, const string& p, const asset& s, const asset& st, const asset& v )
-         :author(a), permlink(p), abd_payout(s), amalgam_payout(st), vesting_payout(v){}
-
-      account_name_type author;
-      string            permlink;
-      asset             abd_payout;
-      asset             amalgam_payout;
-      asset             vesting_payout;
-   };
-
-
-   struct curation_reward_operation : public virtual_operation
-   {
-      curation_reward_operation(){}
-      curation_reward_operation( const string& c, const asset& r, const string& a, const string& p )
-         :curator(c), reward(r), comment_author(a), comment_permlink(p) {}
-
-      account_name_type curator;
-      asset             reward;
-      account_name_type comment_author;
-      string            comment_permlink;
-   };
-
-
-   struct comment_reward_operation : public virtual_operation
-   {
-      comment_reward_operation(){}
-      comment_reward_operation( const account_name_type& a, const string& pl, const asset& p )
-         :author(a), permlink(pl), payout(p){}
-
-      account_name_type author;
-      string            permlink;
-      asset             payout;
-   };
-
-
-   struct liquidity_reward_operation : public virtual_operation
-   {
-      liquidity_reward_operation( string o = string(), asset p = asset() )
-      :owner(o), payout(p) {}
-
-      account_name_type owner;
-      asset             payout;
-   };
-
-
    struct interest_operation : public virtual_operation
    {
       interest_operation( const string& o = "", const asset& i = asset(0,ABD_SYMBOL) )
@@ -63,7 +15,6 @@ namespace amalgam { namespace protocol {
       account_name_type owner;
       asset             interest;
    };
-
 
    struct fill_convert_request_operation : public virtual_operation
    {
@@ -77,7 +28,6 @@ namespace amalgam { namespace protocol {
       asset             amount_out;
    };
 
-
    struct fill_vesting_withdraw_operation : public virtual_operation
    {
       fill_vesting_withdraw_operation(){}
@@ -90,7 +40,6 @@ namespace amalgam { namespace protocol {
       asset             deposited;
    };
 
-
    struct shutdown_witness_operation : public virtual_operation
    {
       shutdown_witness_operation(){}
@@ -98,7 +47,6 @@ namespace amalgam { namespace protocol {
 
       account_name_type owner;
    };
-
 
    struct fill_order_operation : public virtual_operation
    {
@@ -113,7 +61,6 @@ namespace amalgam { namespace protocol {
       uint32_t          open_orderid = 0;
       asset             open_pays;
    };
-
 
    struct fill_transfer_from_savings_operation : public virtual_operation
    {
@@ -136,15 +83,6 @@ namespace amalgam { namespace protocol {
       uint32_t         hardfork_id = 0;
    };
 
-   struct comment_payout_update_operation : public virtual_operation
-   {
-      comment_payout_update_operation() {}
-      comment_payout_update_operation( const account_name_type& a, const string& p ) : author( a ), permlink( p ) {}
-
-      account_name_type author;
-      string            permlink;
-   };
-
    struct return_vesting_delegation_operation : public virtual_operation
    {
       return_vesting_delegation_operation() {}
@@ -152,18 +90,6 @@ namespace amalgam { namespace protocol {
 
       account_name_type account;
       asset             vesting_shares;
-   };
-
-   struct comment_benefactor_reward_operation : public virtual_operation
-   {
-      comment_benefactor_reward_operation() {}
-      comment_benefactor_reward_operation( const account_name_type& b, const account_name_type& a, const string& p, const asset& r )
-         : benefactor( b ), author( a ), permlink( p ), reward( r ) {}
-
-      account_name_type benefactor;
-      account_name_type author;
-      string            permlink;
-      asset             reward;
    };
 
    struct producer_reward_operation : public virtual_operation
@@ -178,18 +104,12 @@ namespace amalgam { namespace protocol {
 
 } } //amalgam::protocol
 
-FC_REFLECT( amalgam::protocol::author_reward_operation, (author)(permlink)(abd_payout)(amalgam_payout)(vesting_payout) )
-FC_REFLECT( amalgam::protocol::curation_reward_operation, (curator)(reward)(comment_author)(comment_permlink) )
-FC_REFLECT( amalgam::protocol::comment_reward_operation, (author)(permlink)(payout) )
 FC_REFLECT( amalgam::protocol::fill_convert_request_operation, (owner)(requestid)(amount_in)(amount_out) )
-FC_REFLECT( amalgam::protocol::liquidity_reward_operation, (owner)(payout) )
 FC_REFLECT( amalgam::protocol::interest_operation, (owner)(interest) )
 FC_REFLECT( amalgam::protocol::fill_vesting_withdraw_operation, (from_account)(to_account)(withdrawn)(deposited) )
 FC_REFLECT( amalgam::protocol::shutdown_witness_operation, (owner) )
 FC_REFLECT( amalgam::protocol::fill_order_operation, (current_owner)(current_orderid)(current_pays)(open_owner)(open_orderid)(open_pays) )
 FC_REFLECT( amalgam::protocol::fill_transfer_from_savings_operation, (from)(to)(amount)(request_id)(memo) )
 FC_REFLECT( amalgam::protocol::hardfork_operation, (hardfork_id) )
-FC_REFLECT( amalgam::protocol::comment_payout_update_operation, (author)(permlink) )
 FC_REFLECT( amalgam::protocol::return_vesting_delegation_operation, (account)(vesting_shares) )
-FC_REFLECT( amalgam::protocol::comment_benefactor_reward_operation, (benefactor)(author)(permlink)(reward) )
 FC_REFLECT( amalgam::protocol::producer_reward_operation, (producer)(vesting_shares) )

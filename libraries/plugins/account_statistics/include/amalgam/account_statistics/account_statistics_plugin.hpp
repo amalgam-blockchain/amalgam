@@ -52,27 +52,6 @@ struct account_stats_bucket_object : public object< account_stats_bucket_object_
    uint32_t             total_ops = 0;                            ///< Ops this account was an authority on
    uint32_t             market_ops = 0;                           ///< Market operations
    uint32_t             forum_ops = 0;                            ///< Forum operations
-   uint32_t             root_comments = 0;                        ///< Top level root comments
-   uint32_t             root_comment_edits = 0;                   ///< Edits to root comments
-   uint32_t             root_comments_deleted = 0;                ///< Root comments deleted
-   uint32_t             replies = 0;                              ///< Replies to comments
-   uint32_t             reply_edits = 0;                          ///< Edits to replies
-   uint32_t             replies_deleted = 0;                      ///< Replies deleted
-   uint32_t             new_root_votes = 0;                       ///< New votes on root comments
-   uint32_t             changed_root_votes = 0;                   ///< Changed votes for root comments
-   uint32_t             new_reply_votes = 0;                      ///< New votes on replies
-   uint32_t             changed_reply_votes = 0;                  ///< Changed votes for replies
-   uint32_t             author_reward_payouts = 0;                ///< Number of author reward payouts
-   share_type           author_rewards_abd = 0;                   ///< ABD paid for author rewards
-   share_type           author_rewards_vests = 0;                 ///< VESTS paid for author rewards
-   share_type           author_rewards_total_amalgam_value = 0;     ///< AMALGAM Value of author rewards
-   share_type           author_rewards_payout_abd_value = 0;      ///< ABD Value of author rewards at time of payout
-   uint32_t             curation_reward_payouts = 0;              ///< Number of curation reward payouts.
-   share_type           curation_rewards_vests = 0;               ///< VESTS paid for curation rewards
-   share_type           curation_rewards_amalgam_value = 0;         ///< AMALGAM Value of curation rewards
-   share_type           curation_rewards_payout_abd_value = 0;    ///< ABD Value of curation rewards at time of payout
-   uint32_t             liquidity_reward_payouts = 0;             ///< Number of liquidity reward payouts
-   share_type           liquidity_rewards = 0;                    ///< Amount of AMALGAM paid as liquidity rewards
    uint32_t             transfers_to = 0;                         ///< Account to account transfers to this account
    uint32_t             transfers_from = 0;                       ///< Account to account transfers from this account
    share_type           amalgam_sent = 0;                           ///< AMALGAM sent from this account
@@ -103,8 +82,6 @@ struct account_stats_bucket_object : public object< account_stats_bucket_object_
    share_type           limit_order_amalgam_received = 0;           ///< AMALGAM received from limit orders
    share_type           limit_order_abd_paid = 0;                 ///< ABD paid by limit orders
    share_type           limit_order_abd_received = 0;             ///< ABD received by limit orders
-   uint32_t             total_pow = 0;                            ///< POW completed
-   uint128_t            estimated_hashpower = 0;                  ///< Estimated hashpower
 };
 
 typedef account_stats_bucket_object::id_type account_stats_bucket_id_type;
@@ -170,27 +147,6 @@ FC_REFLECT( amalgam::account_statistics::account_stats_bucket_object,
    (total_ops)
    (market_ops)
    (forum_ops)
-   (root_comments)
-   (root_comment_edits)
-   (root_comments_deleted)
-   (replies)
-   (reply_edits)
-   (replies_deleted)
-   (new_root_votes)
-   (changed_root_votes)
-   (new_reply_votes)
-   (changed_reply_votes)
-   (author_reward_payouts)
-   (author_rewards_abd)
-   (author_rewards_vests)
-   (author_rewards_total_amalgam_value)
-   (author_rewards_payout_abd_value)
-   (curation_reward_payouts)
-   (curation_rewards_vests)
-   (curation_rewards_amalgam_value)
-   (curation_rewards_payout_abd_value)
-   (liquidity_reward_payouts)
-   (liquidity_rewards)
    (transfers_to)
    (transfers_from)
    (amalgam_sent)
@@ -221,8 +177,6 @@ FC_REFLECT( amalgam::account_statistics::account_stats_bucket_object,
    (limit_order_amalgam_received)
    (limit_order_abd_paid)
    (limit_order_abd_received)
-   (total_pow)
-   (estimated_hashpower)
 )
 //SET_INDEX_TYPE( amalgam::account_statistics::account_stats_bucket_object,)
 

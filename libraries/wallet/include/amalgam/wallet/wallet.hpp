@@ -15,8 +15,6 @@ using namespace std;
 
 namespace amalgam { namespace wallet {
 
-using amalgam::app::discussion;
-
 typedef uint16_t transaction_handle_type;
 
 struct memo_data {
@@ -132,11 +130,6 @@ class wallet_api
        * Returns the list of witnesses producing blocks in the current round (21 Blocks)
        */
       vector<account_name_type>                      get_active_witnesses()const;
-
-      /**
-       * Returns the queue of pow miners waiting to produce blocks.
-       */
-      vector<account_name_type>                      get_miner_queue()const;
 
       /**
        * Returns vesting withdraw routes for an account.
@@ -333,8 +326,8 @@ class wallet_api
       string normalize_brain_key(string s) const;
 
       /**
-       *  This method will genrate new owner, active, and memo keys for the new account which
-       *  will be controlable by this wallet. There is a fee associated with account creation
+       *  This method will generate new owner, active, and memo keys for the new account which
+       *  will be controllable by this wallet. There is a fee associated with account creation
        *  that is paid by the creator. The current account creation fee can be found with the
        *  'info' wallet command.
        *
@@ -361,53 +354,6 @@ class wallet_api
        * @param broadcast true if you wish to broadcast the transaction
        */
       annotated_signed_transaction create_account_with_keys( string creator,
-                                            string newname,
-                                            string json_meta,
-                                            public_key_type owner,
-                                            public_key_type active,
-                                            public_key_type posting,
-                                            public_key_type memo,
-                                            bool broadcast )const;
-
-      /**
-       *  This method will genrate new owner, active, and memo keys for the new account which
-       *  will be controlable by this wallet. There is a fee associated with account creation
-       *  that is paid by the creator. The current account creation fee can be found with the
-       *  'info' wallet command.
-       *
-       *  These accounts are created with combination of AMALGAM and delegated SP
-       *
-       *  @param creator The account creating the new account
-       *  @param amalgam_fee The amount of the fee to be paid with AMALGAM
-       *  @param delegated_vests The amount of the fee to be paid with delegation
-       *  @param new_account_name The name of the new account
-       *  @param json_meta JSON Metadata associated with the new account
-       *  @param broadcast true if you wish to broadcast the transaction
-       */
-      annotated_signed_transaction create_account_delegated( string creator, asset amalgam_fee, asset delegated_vests, string new_account_name, string json_meta, bool broadcast );
-
-      /**
-       * This method is used by faucets to create new accounts for other users which must
-       * provide their desired keys. The resulting account may not be controllable by this
-       * wallet. There is a fee associated with account creation that is paid by the creator.
-       * The current account creation fee can be found with the 'info' wallet command.
-       *
-       * These accounts are created with combination of AMALGAM and delegated SP
-       *
-       * @param creator The account creating the new account
-       * @param amalgam_fee The amount of the fee to be paid with AMALGAM
-       * @param delegated_vests The amount of the fee to be paid with delegation
-       * @param newname The name of the new account
-       * @param json_meta JSON Metadata associated with the new account
-       * @param owner public owner key of the new account
-       * @param active public active key of the new account
-       * @param posting public posting key of the new account
-       * @param memo public memo key of the new account
-       * @param broadcast true if you wish to broadcast the transaction
-       */
-      annotated_signed_transaction create_account_with_keys_delegated( string creator,
-                                            asset amalgam_fee,
-                                            asset delegated_vests,
                                             string newname,
                                             string json_meta,
                                             public_key_type owner,
@@ -833,42 +779,9 @@ class wallet_api
       annotated_signed_transaction cancel_order( string owner, uint32_t orderid, bool broadcast );
 
       /**
-       *  Post or update a comment.
-       *
-       *  @param author the name of the account authoring the comment
-       *  @param permlink the accountwide unique permlink for the comment
-       *  @param parent_author can be empty if this is a top level comment
-       *  @param parent_permlink can be empty if this is a top level comment
-       *  @param json the json metadata of the comment
-       *  @param broadcast true if you wish to broadcast the transaction
-       */
-      annotated_signed_transaction post_comment( string author, string permlink, string parent_author, string parent_permlink, string json, bool broadcast );
-
-      /**
-       * Vote on a comment to be paid AMALGAM
-       *
-       * @param voter The account voting
-       * @param author The author of the comment to be voted on
-       * @param permlink The permlink of the comment to be voted on. (author, permlink) is a unique pair
-       * @param weight The weight [-100,100] of the vote
-       * @param broadcast true if you wish to broadcast the transaction
-       */
-      annotated_signed_transaction vote( string voter, string author, string permlink, int16_t weight, bool broadcast );
-
-      /**
        * Sets the amount of time in the future until a transaction expires.
        */
       void set_transaction_expiration(uint32_t seconds);
-
-      /**
-       * Challenge a user's authority. The challenger pays a fee to the challenged which is depositted as
-       * Solid Amalgam. Until the challenged proves their active key, all posting rights are revoked.
-       *
-       * @param challenger The account issuing the challenge
-       * @param challenged The account being challenged
-       * @param broadcast true if you wish to broadcast the transaction
-       */
-      annotated_signed_transaction challenge( string challenger, string challenged, bool broadcast );
 
       /**
        * Create an account recovery request as a recover account. The syntax for this command contains a serialized authority object
@@ -908,15 +821,6 @@ class wallet_api
       vector< owner_authority_history_api_obj > get_owner_history( string account )const;
 
       /**
-       * Prove an account's active authority, fulfilling a challenge, restoring posting rights, and making
-       * the account immune to challenge for 24 hours.
-       *
-       * @param challenged The account that was challenged and is proving its authority.
-       * @param broadcast true if you wish to broadcast the transaction
-       */
-      annotated_signed_transaction prove( string challenged, bool broadcast );
-
-      /**
        *  Account operations have sequence numbers from 0 to N where N is the most recent operation. This method
        *  returns operations in the range [from-limit, from]
        *
@@ -948,8 +852,6 @@ class wallet_api
       string decrypt_memo( string memo );
 
       annotated_signed_transaction decline_voting_rights( string account, bool decline, bool broadcast );
-
-      annotated_signed_transaction claim_reward_balance( string account, asset reward_amalgam, asset reward_abd, asset reward_vests, bool broadcast );
 };
 
 struct plain_keys {
@@ -1003,8 +905,6 @@ FC_API( amalgam::wallet::wallet_api,
         /// transaction api
         (create_account)
         (create_account_with_keys)
-        (create_account_delegated)
-        (create_account_with_keys_delegated)
         (update_account)
         (update_account_auth_key)
         (update_account_auth_account)
@@ -1029,11 +929,7 @@ FC_API( amalgam::wallet::wallet_api,
         (get_open_orders)
         (create_order)
         (cancel_order)
-        (post_comment)
-        (vote)
         (set_transaction_expiration)
-        (challenge)
-        (prove)
         (request_account_recovery)
         (recover_account)
         (change_recovery_account)
@@ -1044,7 +940,6 @@ FC_API( amalgam::wallet::wallet_api,
         (get_encrypted_memo)
         (decrypt_memo)
         (decline_voting_rights)
-        (claim_reward_balance)
 
         /// helper api
         (get_prototype_operation)
@@ -1055,7 +950,6 @@ FC_API( amalgam::wallet::wallet_api,
         (network_get_connected_peers)
 
         (get_active_witnesses)
-        (get_miner_queue)
         (get_transaction)
       )
 

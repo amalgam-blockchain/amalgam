@@ -19,41 +19,11 @@ namespace amalgam { namespace app {
       bool   rewarded    = false;
    };
 
-   struct vote_state
-   {
-      string         voter;
-      uint64_t       weight = 0;
-      int64_t        rshares = 0;
-      int16_t        percent = 0;
-      share_type     reputation = 0;
-      time_point_sec time;
-   };
-
-   struct account_vote
-   {
-      string         authorperm;
-      uint64_t       weight = 0;
-      int64_t        rshares = 0;
-      int16_t        percent = 0;
-      time_point_sec time;
-   };
-
-   struct  discussion : public comment_api_obj {
-      discussion( const comment_object& o ):comment_api_obj(o){}
-      discussion(){}
-
-      asset                       pending_payout_value; ///< abd
-      asset                       total_pending_payout_value; ///< abd including replies
-      share_type                  author_reputation = 0;
-      asset                       promoted = asset(0, ABD_SYMBOL);
-   };
-
    struct extended_account : public account_api_obj
    {
       extended_account(){}
       extended_account( const account_object& a, const database& db ):account_api_obj( a, db ){}
 
-      share_type                              reputation = 0;
       set<string>                             witness_votes;
    };
 
@@ -91,12 +61,7 @@ namespace amalgam { namespace app {
 
 FC_REFLECT_DERIVED( amalgam::app::extended_account,
                    (amalgam::app::account_api_obj),
-                   (reputation)(witness_votes) )
-
-FC_REFLECT( amalgam::app::vote_state, (voter)(weight)(rshares)(percent)(reputation)(time) );
-FC_REFLECT( amalgam::app::account_vote, (authorperm)(weight)(rshares)(percent)(time) );
-
-FC_REFLECT_DERIVED( amalgam::app::discussion, (amalgam::app::comment_api_obj), (pending_payout_value)(total_pending_payout_value)(author_reputation)(promoted) )
+                   (witness_votes) )
 
 FC_REFLECT_DERIVED( amalgam::app::extended_limit_order, (amalgam::app::limit_order_api_obj), (real_price)(rewarded) )
 FC_REFLECT( amalgam::app::order_history_item, (time)(type)(abd_quantity)(amalgam_quantity)(real_price) );

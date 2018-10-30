@@ -4,30 +4,12 @@
 #include <amalgam/protocol/asset.hpp>
 
 #include <fc/utf8.hpp>
-#include <fc/crypto/equihash.hpp>
 
 namespace amalgam { namespace protocol {
 
    inline void validate_account_name( const string& name )
    {
       FC_ASSERT( is_valid_account_name( name ), "Account name ${n} is invalid", ("n", name) );
-   }
-
-   inline void validate_permlink( const string& permlink )
-   {
-      FC_ASSERT( permlink.size() < AMALGAM_MAX_PERMLINK_LENGTH, "permlink is too long" );
-      FC_ASSERT( fc::is_utf8( permlink ), "permlink not formatted in UTF8" );
-      for( auto c : permlink )
-      {
-         switch( c )
-         {
-            case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-            case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case '-':
-               break;
-            default:
-               FC_ASSERT( false, "Invalid permlink character: ${s}", ("s", std::string() + c ) );
-         }
-      }
    }
 
    struct account_create_operation : public base_operation
@@ -40,25 +22,6 @@ namespace amalgam { namespace protocol {
       authority         posting;
       public_key_type   memo_key;
       string            json_metadata;
-
-      void validate()const;
-      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(creator); }
-   };
-
-
-   struct account_create_with_delegation_operation : public base_operation
-   {
-      asset             fee;
-      asset             delegation;
-      account_name_type creator;
-      account_name_type new_account_name;
-      authority         owner;
-      authority         active;
-      authority         posting;
-      public_key_type   memo_key;
-      string            json_metadata;
-
-      extensions_type   extensions;
 
       void validate()const;
       void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(creator); }
@@ -81,114 +44,6 @@ namespace amalgam { namespace protocol {
 
       void get_required_active_authorities( flat_set<account_name_type>& a )const
       { if( !owner ) a.insert( account ); }
-   };
-
-
-   struct comment_operation : public base_operation
-   {
-      account_name_type parent_author;
-      string            parent_permlink;
-
-      account_name_type author;
-      string            permlink;
-
-      string            json_metadata;
-
-      void validate()const;
-      void get_required_posting_authorities( flat_set<account_name_type>& a )const{ a.insert(author); }
-   };
-
-   struct beneficiary_route_type
-   {
-      beneficiary_route_type() {}
-      beneficiary_route_type( const account_name_type& a, const uint16_t& w ) : account( a ), weight( w ){}
-
-      account_name_type account;
-      uint16_t          weight;
-
-      // For use by std::sort such that the route is sorted first by name (ascending)
-      bool operator < ( const beneficiary_route_type& o )const { return account < o.account; }
-   };
-
-   struct comment_payout_beneficiaries
-   {
-      vector< beneficiary_route_type > beneficiaries;
-
-      void validate()const;
-   };
-
-   typedef static_variant<
-            comment_payout_beneficiaries
-           > comment_options_extension;
-
-   typedef flat_set< comment_options_extension > comment_options_extensions_type;
-
-   /**
-    *  Authors of posts may not want all of the benefits that come from creating a post. This
-    *  operation allows authors to update properties associated with their post.
-    *
-    *  The max_accepted_payout may be decreased, but never increased.
-    *  The percent_amalgam_dollars may be decreased, but never increased
-    *
-    */
-   struct comment_options_operation : public base_operation
-   {
-      account_name_type author;
-      string            permlink;
-
-      asset             max_accepted_payout    = asset( 1000000000, ABD_SYMBOL );       /// ABD value of the maximum payout this post will receive
-      uint16_t          percent_amalgam_dollars  = AMALGAM_100_PERCENT; /// the percent of Amalgam Dollars to key, unkept amounts will be received as Solid Amalgam
-      bool              allow_votes            = true;      /// allows a post to receive votes;
-      bool              allow_curation_rewards = true; /// allows voters to recieve curation rewards. Rewards return to reward fund.
-      comment_options_extensions_type extensions;
-
-      void validate()const;
-      void get_required_posting_authorities( flat_set<account_name_type>& a )const{ a.insert(author); }
-   };
-
-
-   struct challenge_authority_operation : public base_operation
-   {
-      account_name_type challenger;
-      account_name_type challenged;
-      bool              require_owner = false;
-
-      void validate()const;
-
-      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(challenger); }
-   };
-
-   struct prove_authority_operation : public base_operation
-   {
-      account_name_type challenged;
-      bool              require_owner = false;
-
-      void validate()const;
-
-      void get_required_active_authorities( flat_set<account_name_type>& a )const{ if( !require_owner ) a.insert(challenged); }
-      void get_required_owner_authorities( flat_set<account_name_type>& a )const{  if(  require_owner ) a.insert(challenged); }
-   };
-
-
-   struct delete_comment_operation : public base_operation
-   {
-      account_name_type author;
-      string            permlink;
-
-      void validate()const;
-      void get_required_posting_authorities( flat_set<account_name_type>& a )const{ a.insert(author); }
-   };
-
-
-   struct vote_operation : public base_operation
-   {
-      account_name_type    voter;
-      account_name_type    author;
-      string               permlink;
-      int16_t              weight = 0;
-
-      void validate()const;
-      void get_required_posting_authorities( flat_set<account_name_type>& a )const{ a.insert(voter); }
    };
 
 
@@ -609,109 +464,6 @@ namespace amalgam { namespace protocol {
    };
 
 
-   struct pow
-   {
-      public_key_type worker;
-      digest_type     input;
-      signature_type  signature;
-      digest_type     work;
-
-      void create( const fc::ecc::private_key& w, const digest_type& i );
-      void validate()const;
-   };
-
-
-   struct pow_operation : public base_operation
-   {
-      account_name_type worker_account;
-      block_id_type     block_id;
-      uint64_t          nonce = 0;
-      pow               work;
-      chain_properties  props;
-
-      void validate()const;
-      fc::sha256 work_input()const;
-
-      const account_name_type& get_worker_account()const { return worker_account; }
-
-      /** there is no need to verify authority, the proof of work is sufficient */
-      void get_required_active_authorities( flat_set<account_name_type>& a )const{  }
-   };
-
-
-   struct pow2_input
-   {
-      account_name_type worker_account;
-      block_id_type     prev_block;
-      uint64_t          nonce = 0;
-   };
-
-
-   struct pow2
-   {
-      pow2_input        input;
-      uint32_t          pow_summary = 0;
-
-      void create( const block_id_type& prev_block, const account_name_type& account_name, uint64_t nonce );
-      void validate()const;
-   };
-
-   struct equihash_pow
-   {
-      pow2_input           input;
-      fc::equihash::proof  proof;
-      block_id_type        prev_block;
-      uint32_t             pow_summary = 0;
-
-      void create( const block_id_type& recent_block, const account_name_type& account_name, uint32_t nonce );
-      void validate() const;
-   };
-
-   typedef fc::static_variant< pow2, equihash_pow > pow2_work;
-
-   struct pow2_operation : public base_operation
-   {
-      pow2_work                     work;
-      optional< public_key_type >   new_owner_key;
-      chain_properties              props;
-
-      void validate()const;
-
-      void get_required_active_authorities( flat_set<account_name_type>& a )const;
-
-      void get_required_authorities( vector< authority >& a )const
-      {
-         if( new_owner_key )
-         {
-            a.push_back( authority( 1, *new_owner_key, 1 ) );
-         }
-      }
-   };
-
-
-   /**
-    * This operation is used to report a miner who signs two blocks
-    * at the same time. To be valid, the violation must be reported within
-    * AMALGAM_MAX_WITNESSES blocks of the head block (1 round) and the
-    * producer must be in the ACTIVE witness set.
-    *
-    * Users not in the ACTIVE witness set should not have to worry about their
-    * key getting compromised and being used to produced multiple blocks so
-    * the attacker can report it and steel their vesting amalgam.
-    *
-    * The result of the operation is to transfer the full VESTING AMALGAM balance
-    * of the block producer to the reporter.
-    */
-   struct report_over_production_operation : public base_operation
-   {
-      account_name_type    reporter;
-      signed_block_header  first_block;
-      signed_block_header  second_block;
-
-      void validate()const;
-   };
-
-
    /**
     * All account recovery requests come from a listed recovery account. This
     * is secure based on the assumption that only a trusted account should be
@@ -814,42 +566,6 @@ namespace amalgam { namespace protocol {
 
 
    /**
-    *  This operation allows recovery_accoutn to change account_to_reset's owner authority to
-    *  new_owner_authority after 60 days of inactivity.
-    */
-   struct reset_account_operation : public base_operation {
-      account_name_type reset_account;
-      account_name_type account_to_reset;
-      authority         new_owner_authority;
-
-      void get_required_active_authorities( flat_set<account_name_type>& a )const { a.insert( reset_account ); }
-      void validate()const;
-   };
-
-   /**
-    * This operation allows 'account' owner to control which account has the power
-    * to execute the 'reset_account_operation' after 60 days.
-    */
-   struct set_reset_account_operation : public base_operation {
-      account_name_type account;
-      account_name_type current_reset_account;
-      account_name_type reset_account;
-      void validate()const;
-      void get_required_owner_authorities( flat_set<account_name_type>& a )const
-      {
-         if( current_reset_account.size() )
-            a.insert( account );
-      }
-
-      void get_required_posting_authorities( flat_set<account_name_type>& a )const
-      {
-         if( !current_reset_account.size() )
-            a.insert( account );
-      }
-   };
-
-
-   /**
     * Each account lists another account as their recovery account.
     * The recovery account has the ability to create account_recovery_requests
     * for the account to recover. An account can change their recovery account
@@ -919,17 +635,6 @@ namespace amalgam { namespace protocol {
       void validate() const;
    };
 
-   struct claim_reward_balance_operation : public base_operation
-   {
-      account_name_type account;
-      asset             reward_amalgam;
-      asset             reward_abd;
-      asset             reward_vests;
-
-      void get_required_posting_authorities( flat_set< account_name_type >& a )const{ a.insert( account ); }
-      void validate() const;
-   };
-
    /**
     * Delegate vesting shares from one account to the other. The vesting shares are still owned
     * by the original account, but content voting rights and bandwidth allocation are transferred
@@ -948,6 +653,86 @@ namespace amalgam { namespace protocol {
       void get_required_active_authorities( flat_set< account_name_type >& a ) const { a.insert( delegator ); }
       void validate() const;
    };
+   
+   struct tbd1_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd2_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd3_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd4_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd5_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd6_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd7_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd8_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd9_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
+   
+   struct tbd10_operation : public base_operation
+   {
+      account_name_type from;
+
+      void validate()const;
+      void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
+   };
 } } // amalgam::protocol
 
 
@@ -955,22 +740,9 @@ FC_REFLECT( amalgam::protocol::transfer_to_savings_operation, (from)(to)(amount)
 FC_REFLECT( amalgam::protocol::transfer_from_savings_operation, (from)(request_id)(to)(amount)(memo) )
 FC_REFLECT( amalgam::protocol::cancel_transfer_from_savings_operation, (from)(request_id) )
 
-FC_REFLECT( amalgam::protocol::reset_account_operation, (reset_account)(account_to_reset)(new_owner_authority) )
-FC_REFLECT( amalgam::protocol::set_reset_account_operation, (account)(current_reset_account)(reset_account) )
-
-
-FC_REFLECT( amalgam::protocol::report_over_production_operation, (reporter)(first_block)(second_block) )
 FC_REFLECT( amalgam::protocol::convert_operation, (owner)(requestid)(amount) )
 FC_REFLECT( amalgam::protocol::feed_publish_operation, (publisher)(exchange_rate) )
-FC_REFLECT( amalgam::protocol::pow, (worker)(input)(signature)(work) )
-FC_REFLECT( amalgam::protocol::pow2, (input)(pow_summary) )
-FC_REFLECT( amalgam::protocol::pow2_input, (worker_account)(prev_block)(nonce) )
-FC_REFLECT( amalgam::protocol::equihash_pow, (input)(proof)(prev_block)(pow_summary) )
 FC_REFLECT( amalgam::protocol::chain_properties, (account_creation_fee)(maximum_block_size)(abd_interest_rate) );
-
-FC_REFLECT_TYPENAME( amalgam::protocol::pow2_work )
-FC_REFLECT( amalgam::protocol::pow_operation, (worker_account)(block_id)(nonce)(work)(props) )
-FC_REFLECT( amalgam::protocol::pow2_operation, (work)(new_owner_key)(props) )
 
 FC_REFLECT( amalgam::protocol::account_create_operation,
             (fee)
@@ -981,18 +753,6 @@ FC_REFLECT( amalgam::protocol::account_create_operation,
             (posting)
             (memo_key)
             (json_metadata) )
-
-FC_REFLECT( amalgam::protocol::account_create_with_delegation_operation,
-            (fee)
-            (delegation)
-            (creator)
-            (new_account_name)
-            (owner)
-            (active)
-            (posting)
-            (memo_key)
-            (json_metadata)
-            (extensions) )
 
 FC_REFLECT( amalgam::protocol::account_update_operation,
             (account)
@@ -1009,31 +769,28 @@ FC_REFLECT( amalgam::protocol::set_withdraw_vesting_route_operation, (from_accou
 FC_REFLECT( amalgam::protocol::witness_update_operation, (owner)(url)(block_signing_key)(props)(fee) )
 FC_REFLECT( amalgam::protocol::account_witness_vote_operation, (account)(witness)(approve) )
 FC_REFLECT( amalgam::protocol::account_witness_proxy_operation, (account)(proxy) )
-FC_REFLECT( amalgam::protocol::comment_operation, (parent_author)(parent_permlink)(author)(permlink)(json_metadata) )
-FC_REFLECT( amalgam::protocol::vote_operation, (voter)(author)(permlink)(weight) )
 FC_REFLECT( amalgam::protocol::custom_operation, (required_auths)(id)(data) )
 FC_REFLECT( amalgam::protocol::custom_json_operation, (required_auths)(required_posting_auths)(id)(json) )
 FC_REFLECT( amalgam::protocol::custom_binary_operation, (required_owner_auths)(required_active_auths)(required_posting_auths)(required_auths)(id)(data) )
 FC_REFLECT( amalgam::protocol::limit_order_create_operation, (owner)(orderid)(amount_to_sell)(min_to_receive)(fill_or_kill)(expiration) )
 FC_REFLECT( amalgam::protocol::limit_order_create2_operation, (owner)(orderid)(amount_to_sell)(exchange_rate)(fill_or_kill)(expiration) )
 FC_REFLECT( amalgam::protocol::limit_order_cancel_operation, (owner)(orderid) )
-
-FC_REFLECT( amalgam::protocol::delete_comment_operation, (author)(permlink) );
-
-FC_REFLECT( amalgam::protocol::beneficiary_route_type, (account)(weight) )
-FC_REFLECT( amalgam::protocol::comment_payout_beneficiaries, (beneficiaries) )
-FC_REFLECT_TYPENAME( amalgam::protocol::comment_options_extension )
-FC_REFLECT( amalgam::protocol::comment_options_operation, (author)(permlink)(max_accepted_payout)(percent_amalgam_dollars)(allow_votes)(allow_curation_rewards)(extensions) )
-
 FC_REFLECT( amalgam::protocol::escrow_transfer_operation, (from)(to)(abd_amount)(amalgam_amount)(escrow_id)(agent)(fee)(json_meta)(ratification_deadline)(escrow_expiration) );
 FC_REFLECT( amalgam::protocol::escrow_approve_operation, (from)(to)(agent)(who)(escrow_id)(approve) );
 FC_REFLECT( amalgam::protocol::escrow_dispute_operation, (from)(to)(agent)(who)(escrow_id) );
 FC_REFLECT( amalgam::protocol::escrow_release_operation, (from)(to)(agent)(who)(receiver)(escrow_id)(abd_amount)(amalgam_amount) );
-FC_REFLECT( amalgam::protocol::challenge_authority_operation, (challenger)(challenged)(require_owner) );
-FC_REFLECT( amalgam::protocol::prove_authority_operation, (challenged)(require_owner) );
 FC_REFLECT( amalgam::protocol::request_account_recovery_operation, (recovery_account)(account_to_recover)(new_owner_authority)(extensions) );
 FC_REFLECT( amalgam::protocol::recover_account_operation, (account_to_recover)(new_owner_authority)(recent_owner_authority)(extensions) );
 FC_REFLECT( amalgam::protocol::change_recovery_account_operation, (account_to_recover)(new_recovery_account)(extensions) );
 FC_REFLECT( amalgam::protocol::decline_voting_rights_operation, (account)(decline) );
-FC_REFLECT( amalgam::protocol::claim_reward_balance_operation, (account)(reward_amalgam)(reward_abd)(reward_vests) )
 FC_REFLECT( amalgam::protocol::delegate_vesting_shares_operation, (delegator)(delegatee)(vesting_shares) );
+FC_REFLECT( amalgam::protocol::tbd1_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd2_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd3_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd4_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd5_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd6_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd7_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd8_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd9_operation, (from) );
+FC_REFLECT( amalgam::protocol::tbd10_operation, (from) );

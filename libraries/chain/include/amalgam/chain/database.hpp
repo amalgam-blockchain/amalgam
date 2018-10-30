@@ -11,7 +11,6 @@
 
 #include <amalgam/protocol/protocol.hpp>
 
-//#include <graphene/db2/database.hpp>
 #include <fc/signals.hpp>
 
 #include <fc/log/logger.hpp>
@@ -29,10 +28,6 @@ namespace amalgam { namespace chain {
 
    class database_impl;
    class custom_operation_interpreter;
-
-   namespace util {
-      struct comment_reward_context;
-   }
 
    /**
     *   @class database
@@ -120,12 +115,6 @@ namespace amalgam { namespace chain {
          const account_object&  get_account(  const account_name_type& name )const;
          const account_object*  find_account( const account_name_type& name )const;
 
-         const comment_object&  get_comment(  const account_name_type& author, const shared_string& permlink )const;
-         const comment_object*  find_comment( const account_name_type& author, const shared_string& permlink )const;
-
-         const comment_object&  get_comment(  const account_name_type& author, const string& permlink )const;
-         const comment_object*  find_comment( const account_name_type& author, const string& permlink )const;
-
          const escrow_object&   get_escrow(  const account_name_type& name, uint32_t escrow_id )const;
          const escrow_object*   find_escrow( const account_name_type& name, uint32_t escrow_id )const;
 
@@ -140,9 +129,6 @@ namespace amalgam { namespace chain {
          const feed_history_object&             get_feed_history()const;
          const witness_schedule_object&         get_witness_schedule_object()const;
          const hardfork_property_object&        get_hardfork_property_object()const;
-
-         const time_point_sec                   calculate_discussion_payout_time( const comment_object& comment )const;
-         const reward_fund_object&              get_reward_fund( const comment_object& c )const;
 
          /**
           *  Deducts fee from the account and the share supply
@@ -279,14 +265,10 @@ namespace amalgam { namespace chain {
           */
          uint32_t get_slot_at_time(fc::time_point_sec when)const;
 
-         /** @return the abd created and deposited to_account, may return AMALGAM if there is no median feed */
-         std::pair< asset, asset > create_abd( const account_object& to_account, asset amalgam, bool to_reward_balance=false );
-         asset create_vesting( const account_object& to_account, asset amalgam, bool to_reward_balance=false );
-         void adjust_total_payout( const comment_object& a, const asset& abd, const asset& curator_abd_value, const asset& beneficiary_value );
+         asset create_vesting( const account_object& to_account, asset amalgam );
 
          void        adjust_balance( const account_object& a, const asset& delta );
          void        adjust_savings_balance( const account_object& a, const asset& delta );
-         void        adjust_reward_balance( const account_object& a, const asset& delta );
          void        adjust_supply( const asset& delta );
          void        update_owner_authority( const account_object& account, const authority& owner_authority );
 
@@ -314,9 +296,6 @@ namespace amalgam { namespace chain {
           */
          void clear_witness_votes( const account_object& a );
          void process_vesting_withdrawals();
-         share_type pay_curators( const comment_object& c, share_type& max_rewards );
-         share_type cashout_comment_helper( util::comment_reward_context& ctx, const comment_object& comment );
-         void process_comment_cashout();
          void process_funds();
          void process_conversions();
          void process_savings_withdraws();
@@ -324,17 +303,6 @@ namespace amalgam { namespace chain {
          void expire_escrow_ratification();
          void process_decline_voting_rights();
          void update_median_feed();
-
-         uint16_t get_curation_rewards_percent( const comment_object& c ) const;
-
-         share_type pay_reward_funds( share_type reward );
-
-         /**
-          * Helper method to return the current abd value of a given amount of
-          * AMALGAM.  Return 0 ABD if there isn't a current_median_history
-          */
-         asset to_abd( const asset& amalgam )const;
-         asset to_amalgam( const asset& abd )const;
 
          time_point_sec   head_block_time()const;
          uint32_t         head_block_num()const;
@@ -389,7 +357,6 @@ namespace amalgam { namespace chain {
          void show_free_memory( bool force );
 
 #ifdef IS_TEST_NET
-         bool liquidity_rewards_enabled = true;
          bool skip_price_feed_limit_check = true;
          bool skip_transaction_delta_check = true;
 #endif

@@ -16,11 +16,6 @@
 #include <amalgam/chain/operation_notification.hpp>
 #include <amalgam/chain/witness_schedule.hpp>
 
-#include <amalgam/chain/util/asset.hpp>
-#include <amalgam/chain/util/reward.hpp>
-#include <amalgam/chain/util/uint256.hpp>
-#include <amalgam/chain/util/reward.hpp>
-
 #include <fc/smart_ref_impl.hpp>
 #include <fc/uint128.hpp>
 
@@ -34,8 +29,6 @@
 #include <functional>
 
 namespace amalgam { namespace chain {
-
-//namespace db2 = graphene::db2;
 
 struct object_schema_repr
 {
@@ -66,13 +59,6 @@ FC_REFLECT( amalgam::chain::db_schema, (types)(object_types)(operation_type)(cus
 namespace amalgam { namespace chain {
 
 using boost::container::flat_set;
-
-struct reward_fund_context
-{
-   uint128_t   recent_claims = 0;
-   asset       reward_balance = asset( 0, AMALGAM_SYMBOL );
-   share_type  amalgam_awarded = 0;
-};
 
 class database_impl
 {
@@ -368,26 +354,6 @@ const account_object* database::find_account( const account_name_type& name )con
    return find< account_object, by_name >( name );
 }
 
-const comment_object& database::get_comment( const account_name_type& author, const shared_string& permlink )const
-{ try {
-   return get< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
-} FC_CAPTURE_AND_RETHROW( (author)(permlink) ) }
-
-const comment_object* database::find_comment( const account_name_type& author, const shared_string& permlink )const
-{
-   return find< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
-}
-
-const comment_object& database::get_comment( const account_name_type& author, const string& permlink )const
-{ try {
-   return get< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
-} FC_CAPTURE_AND_RETHROW( (author)(permlink) ) }
-
-const comment_object* database::find_comment( const account_name_type& author, const string& permlink )const
-{
-   return find< comment_object, by_permlink >( boost::make_tuple( author, permlink ) );
-}
-
 const escrow_object& database::get_escrow( const account_name_type& name, uint32_t escrow_id )const
 { try {
    return get< escrow_object, by_from_id >( boost::make_tuple( name, escrow_id ) );
@@ -442,16 +408,6 @@ const hardfork_property_object& database::get_hardfork_property_object()const
 { try {
    return get< hardfork_property_object >();
 } FC_CAPTURE_AND_RETHROW() }
-
-const time_point_sec database::calculate_discussion_payout_time( const comment_object& comment )const
-{
-   return comment.cashout_time;
-}
-
-const reward_fund_object& database::get_reward_fund( const comment_object& c ) const
-{
-   return get< reward_fund_object, by_name >( AMALGAM_POST_REWARD_FUND_NAME );
-}
 
 void database::pay_fee( const account_object& account, asset fee )
 {
@@ -948,60 +904,10 @@ uint32_t database::get_slot_at_time(fc::time_point_sec when)const
 }
 
 /**
- *  Converts AMALGAM into abd and adds it to to_account while reducing the AMALGAM supply
- *  by AMALGAM and increasing the abd supply by the specified amount.
- */
-std::pair< asset, asset > database::create_abd( const account_object& to_account, asset amalgam, bool to_reward_balance )
-{
-   std::pair< asset, asset > assets( asset( 0, ABD_SYMBOL ), asset( 0, AMALGAM_SYMBOL ) );
-
-   try
-   {
-      if( amalgam.amount == 0 )
-         return assets;
-
-      const auto& median_price = get_feed_history().current_median_history;
-      const auto& gpo = get_dynamic_global_properties();
-
-      if( !median_price.is_null() )
-      {
-         auto to_abd = ( gpo.abd_print_rate * amalgam.amount ) / AMALGAM_100_PERCENT;
-         auto to_amalgam = amalgam.amount - to_abd;
-
-         auto abd = asset( to_abd, AMALGAM_SYMBOL ) * median_price;
-
-         if( to_reward_balance )
-         {
-            adjust_reward_balance( to_account, abd );
-            adjust_reward_balance( to_account, asset( to_amalgam, AMALGAM_SYMBOL ) );
-         }
-         else
-         {
-            adjust_balance( to_account, abd );
-            adjust_balance( to_account, asset( to_amalgam, AMALGAM_SYMBOL ) );
-         }
-
-         adjust_supply( asset( -to_abd, AMALGAM_SYMBOL ) );
-         adjust_supply( abd );
-         assets.first = abd;
-         assets.second = to_amalgam;
-      }
-      else
-      {
-         adjust_balance( to_account, amalgam );
-         assets.second = amalgam;
-      }
-   }
-   FC_CAPTURE_LOG_AND_RETHROW( (to_account.name)(amalgam) )
-
-   return assets;
-}
-
-/**
  * @param to_account - the account to receive the new vesting shares
  * @param AMALGAM - AMALGAM to be converted to vesting shares
  */
-asset database::create_vesting( const account_object& to_account, asset amalgam, bool to_reward_balance )
+asset database::create_vesting( const account_object& to_account, asset amalgam )
 {
    try
    {
@@ -1020,35 +926,20 @@ asset database::create_vesting( const account_object& to_account, asset amalgam,
        *
        *  128 bit math is requred due to multiplying of 64 bit numbers. This is done in asset and price.
        */
-      asset new_vesting = amalgam * ( to_reward_balance ? cprops.get_reward_vesting_share_price() : cprops.get_vesting_share_price() );
+      asset new_vesting = amalgam * cprops.get_vesting_share_price();
 
       modify( to_account, [&]( account_object& to )
       {
-         if( to_reward_balance )
-         {
-            to.reward_vesting_balance += new_vesting;
-            to.reward_vesting_amalgam += amalgam;
-         }
-         else
-            to.vesting_shares += new_vesting;
+         to.vesting_shares += new_vesting;
       } );
 
       modify( cprops, [&]( dynamic_global_property_object& props )
       {
-         if( to_reward_balance )
-         {
-            props.pending_rewarded_vesting_shares += new_vesting;
-            props.pending_rewarded_vesting_amalgam += amalgam;
-         }
-         else
-         {
-            props.total_vesting_fund_amalgam += amalgam;
-            props.total_vesting_shares += new_vesting;
-         }
+         props.total_vesting_fund_amalgam += amalgam;
+         props.total_vesting_shares += new_vesting;
       } );
 
-      if( !to_reward_balance )
-         adjust_proxied_witness_votes( to_account, new_vesting.amount );
+      adjust_proxied_witness_votes( to_account, new_vesting.amount );
 
       return new_vesting;
    }
@@ -1132,7 +1023,7 @@ void database::adjust_witness_vote( const witness_object& witness, share_type de
       w.votes += delta;
       FC_ASSERT( w.votes <= get_dynamic_global_properties().total_vesting_shares.amount, "", ("w.votes", w.votes)("props",get_dynamic_global_properties().total_vesting_shares) );
 
-      w.virtual_scheduled_time = w.virtual_last_update + (VIRTUAL_SCHEDULE_LAP_LENGTH - w.virtual_position)/(w.votes.value+1);
+      w.virtual_scheduled_time = w.virtual_last_update + (AMALGAM_VIRTUAL_SCHEDULE_LAP_LENGTH - w.virtual_position)/(w.votes.value+1);
 
       /** witnesses with a low number of votes could overflow the time field and end up with a scheduled time in the past */
       if( w.virtual_scheduled_time < wso.current_virtual_time )
@@ -1204,37 +1095,6 @@ void database::clear_null_account_balance()
       });
 
       total_amalgam += converted_amalgam;
-   }
-
-   if( null_account.reward_amalgam_balance.amount > 0 )
-   {
-      total_amalgam += null_account.reward_amalgam_balance;
-      adjust_reward_balance( null_account, -null_account.reward_amalgam_balance );
-   }
-
-   if( null_account.reward_abd_balance.amount > 0 )
-   {
-      total_abd += null_account.reward_abd_balance;
-      adjust_reward_balance( null_account, -null_account.reward_abd_balance );
-   }
-
-   if( null_account.reward_vesting_balance.amount > 0 )
-   {
-      const auto& gpo = get_dynamic_global_properties();
-
-      total_amalgam += null_account.reward_vesting_amalgam;
-
-      modify( gpo, [&]( dynamic_global_property_object& g )
-      {
-         g.pending_rewarded_vesting_shares -= null_account.reward_vesting_balance;
-         g.pending_rewarded_vesting_amalgam -= null_account.reward_vesting_amalgam;
-      });
-
-      modify( null_account, [&]( account_object& a )
-      {
-         a.reward_vesting_amalgam.amount = 0;
-         a.reward_vesting_balance.amount = 0;
-      });
    }
 
    if( total_amalgam.amount > 0 )
@@ -1384,268 +1244,6 @@ void database::process_vesting_withdrawals()
    }
 }
 
-void database::adjust_total_payout( const comment_object& cur, const asset& abd_created, const asset& curator_abd_value, const asset& beneficiary_value )
-{
-   modify( cur, [&]( comment_object& c )
-   {
-      if( c.total_payout_value.symbol == abd_created.symbol )
-         c.total_payout_value += abd_created;
-         c.curator_payout_value += curator_abd_value;
-         c.beneficiary_payout_value += beneficiary_value;
-   } );
-   /// TODO: potentially modify author's total payout numbers as well
-}
-
-/**
- *  This method will iterate through all comment_vote_objects and give them
- *  (max_rewards * weight) / c.total_vote_weight.
- *
- *  @returns unclaimed rewards.
- */
-share_type database::pay_curators( const comment_object& c, share_type& max_rewards )
-{
-   try
-   {
-      uint128_t total_weight( c.total_vote_weight );
-      //edump( (total_weight)(max_rewards) );
-      share_type unclaimed_rewards = max_rewards;
-
-      if( !c.allow_curation_rewards )
-      {
-         unclaimed_rewards = 0;
-         max_rewards = 0;
-      }
-      else if( c.total_vote_weight > 0 )
-      {
-         const auto& cvidx = get_index<comment_vote_index>().indices().get<by_comment_weight_voter>();
-         auto itr = cvidx.lower_bound( c.id );
-         while( itr != cvidx.end() && itr->comment == c.id )
-         {
-            uint128_t weight( itr->weight );
-            auto claim = ( ( max_rewards.value * weight ) / total_weight ).to_uint64();
-            if( claim > 0 ) // min_amt is non-zero satoshis
-            {
-               unclaimed_rewards -= claim;
-               const auto& voter = get(itr->voter);
-               auto reward = create_vesting( voter, asset( claim, AMALGAM_SYMBOL ), true );
-
-               push_virtual_operation( curation_reward_operation( voter.name, reward, c.author, to_string( c.permlink ) ) );
-
-               #ifndef IS_LOW_MEM
-                  modify( voter, [&]( account_object& a )
-                  {
-                     a.curation_rewards += claim;
-                  });
-               #endif
-            }
-            ++itr;
-         }
-      }
-      max_rewards -= unclaimed_rewards;
-
-      return unclaimed_rewards;
-   } FC_CAPTURE_AND_RETHROW()
-}
-
-void fill_comment_reward_context_local_state( util::comment_reward_context& ctx, const comment_object& comment )
-{
-   ctx.rshares = comment.net_rshares;
-   ctx.reward_weight = comment.reward_weight;
-   ctx.max_abd = comment.max_accepted_payout;
-}
-
-share_type database::cashout_comment_helper( util::comment_reward_context& ctx, const comment_object& comment )
-{
-   try
-   {
-      share_type claimed_reward = 0;
-
-      if( comment.net_rshares > 0 )
-      {
-         fill_comment_reward_context_local_state( ctx, comment );
-
-         const auto rf = get_reward_fund( comment );
-         ctx.reward_curve = rf.author_reward_curve;
-         ctx.content_constant = rf.content_constant;
-
-         const share_type reward = util::get_rshare_reward( ctx );
-         uint128_t reward_tokens = uint128_t( reward.value );
-
-         if( reward_tokens > 0 )
-         {
-            share_type curation_tokens = ( ( reward_tokens * get_curation_rewards_percent( comment ) ) / AMALGAM_100_PERCENT ).to_uint64();
-            share_type author_tokens = reward_tokens.to_uint64() - curation_tokens;
-
-            author_tokens += pay_curators( comment, curation_tokens );
-            share_type total_beneficiary = 0;
-            claimed_reward = author_tokens + curation_tokens;
-
-            for( auto& b : comment.beneficiaries )
-            {
-               auto benefactor_tokens = ( author_tokens * b.weight ) / AMALGAM_100_PERCENT;
-               auto vest_created = create_vesting( get_account( b.account ), benefactor_tokens, true );
-               push_virtual_operation( comment_benefactor_reward_operation( b.account, comment.author, to_string( comment.permlink ), vest_created ) );
-               total_beneficiary += benefactor_tokens;
-            }
-
-            author_tokens -= total_beneficiary;
-
-            auto abd_amalgam     = ( author_tokens * comment.percent_amalgam_dollars ) / ( 2 * AMALGAM_100_PERCENT ) ;
-            auto vesting_amalgam = author_tokens - abd_amalgam;
-
-            const auto& author = get_account( comment.author );
-            auto vest_created = create_vesting( author, vesting_amalgam, true );
-            auto abd_payout = create_abd( author, abd_amalgam, true );
-
-            adjust_total_payout( comment, abd_payout.first + to_abd( abd_payout.second + asset( vesting_amalgam, AMALGAM_SYMBOL ) ), to_abd( asset( curation_tokens, AMALGAM_SYMBOL ) ), to_abd( asset( total_beneficiary, AMALGAM_SYMBOL ) ) );
-
-            push_virtual_operation( author_reward_operation( comment.author, to_string( comment.permlink ), abd_payout.first, abd_payout.second, vest_created ) );
-            push_virtual_operation( comment_reward_operation( comment.author, to_string( comment.permlink ), to_abd( asset( claimed_reward, AMALGAM_SYMBOL ) ) ) );
-
-            #ifndef IS_LOW_MEM
-               modify( comment, [&]( comment_object& c )
-               {
-                  c.author_rewards += author_tokens;
-               });
-
-               modify( get_account( comment.author ), [&]( account_object& a )
-               {
-                  a.posting_rewards += author_tokens;
-               });
-            #endif
-
-         }
-      }
-
-      modify( comment, [&]( comment_object& c )
-      {
-         /**
-         * A payout is only made for positive rshares, negative rshares hang around
-         * for the next time this post might get an upvote.
-         */
-         if( c.net_rshares > 0 )
-            c.net_rshares = 0;
-         c.children_abs_rshares = 0;
-         c.abs_rshares  = 0;
-         c.vote_rshares = 0;
-         c.total_vote_weight = 0;
-         c.max_cashout_time = fc::time_point_sec::maximum();
-         c.cashout_time = fc::time_point_sec::maximum();
-         c.last_payout = head_block_time();
-      } );
-
-      push_virtual_operation( comment_payout_update_operation( comment.author, to_string( comment.permlink ) ) );
-
-      const auto& vote_idx = get_index< comment_vote_index >().indices().get< by_comment_voter >();
-      auto vote_itr = vote_idx.lower_bound( comment.id );
-      while( vote_itr != vote_idx.end() && vote_itr->comment == comment.id )
-      {
-         const auto& cur_vote = *vote_itr;
-         ++vote_itr;
-         if( calculate_discussion_payout_time( comment ) != fc::time_point_sec::maximum() )
-         {
-            modify( cur_vote, [&]( comment_vote_object& cvo )
-            {
-               cvo.num_changes = -1;
-            });
-         }
-         else
-         {
-#ifdef CLEAR_VOTES
-            remove( cur_vote );
-#endif
-         }
-      }
-
-      return claimed_reward;
-   } FC_CAPTURE_AND_RETHROW( (comment) )
-}
-
-void database::process_comment_cashout()
-{
-   util::comment_reward_context ctx;
-   ctx.current_amalgam_price = get_feed_history().current_median_history;
-
-   vector< reward_fund_context > funds;
-   vector< share_type > amalgam_awarded;
-   const auto& reward_idx = get_index< reward_fund_index, by_id >();
-
-   // Decay recent rshares of each fund
-   for( auto itr = reward_idx.begin(); itr != reward_idx.end(); ++itr )
-   {
-      // Add all reward funds to the local cache and decay their recent rshares
-      modify( *itr, [&]( reward_fund_object& rfo )
-      {
-         fc::microseconds decay_rate = AMALGAM_RECENT_RSHARES_DECAY_RATE;
-
-         rfo.recent_claims -= ( rfo.recent_claims * ( head_block_time() - rfo.last_update ).to_seconds() ) / decay_rate.to_seconds();
-         rfo.last_update = head_block_time();
-      });
-
-      reward_fund_context rf_ctx;
-      rf_ctx.recent_claims = itr->recent_claims;
-      rf_ctx.reward_balance = itr->reward_balance;
-
-      // The index is by ID, so the ID should be the current size of the vector (0, 1, 2, etc...)
-      assert( funds.size() == size_t( itr->id._id ) );
-
-      funds.push_back( rf_ctx );
-   }
-
-   const auto& cidx        = get_index< comment_index >().indices().get< by_cashout_time >();
-
-   auto current = cidx.begin();
-   //  add all rshares about to be cashed out to the reward funds. This ensures equal satoshi per rshare payment
-   while( current != cidx.end() && current->cashout_time <= head_block_time() )
-   {
-      if( current->net_rshares > 0 )
-      {
-         const auto& rf = get_reward_fund( *current );
-         funds[ rf.id._id ].recent_claims += util::evaluate_reward_curve( current->net_rshares.value, rf.author_reward_curve, rf.content_constant );
-      }
-
-      ++current;
-   }
-
-   current = cidx.begin();
-
-   /*
-    * Payout all comments
-    *
-    * Each payout follows a similar pattern, but for a different reason.
-    * Cashout comment helper does not know about the reward fund it is paying from.
-    * The helper only does token allocation based on curation rewards and the ABD
-    * global %, etc.
-    *
-    * Each context is used by get_rshare_reward to determine what part of each budget
-    * the comment is entitled to. Prior to hardfork 17, all payouts are done against
-    * the global state updated each payout. After the hardfork, each payout is done
-    * against a reward fund state that is snapshotted before all payouts in the block.
-    */
-   while( current != cidx.end() && current->cashout_time <= head_block_time() )
-   {
-      auto fund_id = get_reward_fund( *current ).id._id;
-      ctx.total_reward_shares2 = funds[ fund_id ].recent_claims;
-      ctx.total_reward_fund_amalgam = funds[ fund_id ].reward_balance;
-      funds[ fund_id ].amalgam_awarded += cashout_comment_helper( ctx, *current );
-
-      current = cidx.begin();
-   }
-
-   // Write the cached fund state back to the database
-   if( funds.size() )
-   {
-      for( size_t i = 0; i < funds.size(); i++ )
-      {
-         modify( get< reward_fund_object, by_id >( reward_fund_id_type( i ) ), [&]( reward_fund_object& rfo )
-         {
-            rfo.recent_claims = funds[ i ].recent_claims;
-            rfo.reward_balance -= funds[ i ].amalgam_awarded;
-         });
-      }
-   }
-}
-
 /**
  *  Inflation model
  *  This method pays out vesting shares, reward fund and witnesses every block.
@@ -1666,20 +1264,19 @@ void database::process_funds()
    int64_t current_inflation_rate = std::max( start_inflation_rate - inflation_rate_adjustment, inflation_rate_floor );
 
    auto new_amalgam = ( props.virtual_supply.amount * current_inflation_rate ) / ( int64_t( AMALGAM_100_PERCENT ) * int64_t( AMALGAM_BLOCKS_PER_YEAR ) );
-   auto content_reward = ( new_amalgam * AMALGAM_CONTENT_REWARD_PERCENT ) / AMALGAM_100_PERCENT;
-   content_reward = pay_reward_funds( content_reward ); /// 75% to content creator
+   auto content_reward = ( new_amalgam * AMALGAM_CONTENT_REWARD_PERCENT ) / AMALGAM_100_PERCENT; /// 75% to content creator
    auto vesting_reward = ( new_amalgam * AMALGAM_VESTING_FUND_PERCENT ) / AMALGAM_100_PERCENT; /// 15% to vesting fund
    auto witness_reward = new_amalgam - content_reward - vesting_reward; /// Remaining 10% to witness pay
+   
+   adjust_balance( get_account( AMALGAM_REWARD_FUND_ACCOUNT ), asset( content_reward, AMALGAM_SYMBOL ) );
 
    const auto& cwit = get_witness( props.current_witness );
    witness_reward *= std::min( wso.num_scheduled_witnesses, uint8_t(AMALGAM_MAX_WITNESSES) );
 
    if( cwit.schedule == witness_object::timeshare )
       witness_reward *= wso.timeshare_weight;
-   else if( cwit.schedule == witness_object::miner )
-      witness_reward *= wso.miner_weight;
-   else if( cwit.schedule == witness_object::top19 )
-      witness_reward *= wso.top19_weight;
+   else if( cwit.schedule == witness_object::top )
+      witness_reward *= wso.top_weight;
    else
       wlog( "Encountered unknown witness type for witness: ${w}", ("w", cwit.owner) );
 
@@ -1717,35 +1314,6 @@ void database::process_savings_withdraws()
      remove( *itr );
      itr = idx.begin();
   }
-}
-
-uint16_t database::get_curation_rewards_percent( const comment_object& c ) const
-{
-   return get_reward_fund( c ).percent_curation_rewards;
-}
-
-share_type database::pay_reward_funds( share_type reward )
-{
-   const auto& reward_idx = get_index< reward_fund_index, by_id >();
-   share_type used_rewards = 0;
-
-   for( auto itr = reward_idx.begin(); itr != reward_idx.end(); ++itr )
-   {
-      // reward is a per block reward and the percents are 16-bit. This should never overflow
-      auto r = ( reward * itr->percent_content_rewards ) / AMALGAM_100_PERCENT;
-
-      modify( *itr, [&]( reward_fund_object& rfo )
-      {
-         rfo.reward_balance += asset( r, AMALGAM_SYMBOL );
-      });
-
-      used_rewards += r;
-
-      // Sanity check to ensure we aren't printing more AMALGAM than has been allocated through inflation
-      FC_ASSERT( used_rewards <= reward );
-   }
-
-   return used_rewards;
 }
 
 /**
@@ -1790,16 +1358,6 @@ void database::process_conversions()
        p.virtual_supply += net_amalgam;
        p.virtual_supply -= net_abd * get_feed_history().current_median_history;
    } );
-}
-
-asset database::to_abd( const asset& amalgam )const
-{
-   return util::to_abd( get_feed_history().current_median_history, amalgam );
-}
-
-asset database::to_amalgam( const asset& abd )const
-{
-   return util::to_amalgam( get_feed_history().current_median_history, abd );
 }
 
 void database::account_recovery_processing()
@@ -1915,10 +1473,6 @@ uint32_t database::last_non_undoable_block_num() const
 
 void database::initialize_evaluators()
 {
-   _my->_evaluator_registry.register_evaluator< vote_evaluator                           >();
-   _my->_evaluator_registry.register_evaluator< comment_evaluator                        >();
-   _my->_evaluator_registry.register_evaluator< comment_options_evaluator                >();
-   _my->_evaluator_registry.register_evaluator< delete_comment_evaluator                 >();
    _my->_evaluator_registry.register_evaluator< transfer_evaluator                       >();
    _my->_evaluator_registry.register_evaluator< transfer_to_vesting_evaluator            >();
    _my->_evaluator_registry.register_evaluator< withdraw_vesting_evaluator               >();
@@ -1931,16 +1485,11 @@ void database::initialize_evaluators()
    _my->_evaluator_registry.register_evaluator< custom_evaluator                         >();
    _my->_evaluator_registry.register_evaluator< custom_binary_evaluator                  >();
    _my->_evaluator_registry.register_evaluator< custom_json_evaluator                    >();
-   _my->_evaluator_registry.register_evaluator< pow_evaluator                            >();
-   _my->_evaluator_registry.register_evaluator< pow2_evaluator                           >();
-   _my->_evaluator_registry.register_evaluator< report_over_production_evaluator         >();
    _my->_evaluator_registry.register_evaluator< feed_publish_evaluator                   >();
    _my->_evaluator_registry.register_evaluator< convert_evaluator                        >();
    _my->_evaluator_registry.register_evaluator< limit_order_create_evaluator             >();
    _my->_evaluator_registry.register_evaluator< limit_order_create2_evaluator            >();
    _my->_evaluator_registry.register_evaluator< limit_order_cancel_evaluator             >();
-   _my->_evaluator_registry.register_evaluator< challenge_authority_evaluator            >();
-   _my->_evaluator_registry.register_evaluator< prove_authority_evaluator                >();
    _my->_evaluator_registry.register_evaluator< request_account_recovery_evaluator       >();
    _my->_evaluator_registry.register_evaluator< recover_account_evaluator                >();
    _my->_evaluator_registry.register_evaluator< change_recovery_account_evaluator        >();
@@ -1952,11 +1501,17 @@ void database::initialize_evaluators()
    _my->_evaluator_registry.register_evaluator< transfer_from_savings_evaluator          >();
    _my->_evaluator_registry.register_evaluator< cancel_transfer_from_savings_evaluator   >();
    _my->_evaluator_registry.register_evaluator< decline_voting_rights_evaluator          >();
-   _my->_evaluator_registry.register_evaluator< reset_account_evaluator                  >();
-   _my->_evaluator_registry.register_evaluator< set_reset_account_evaluator              >();
-   _my->_evaluator_registry.register_evaluator< claim_reward_balance_evaluator           >();
-   _my->_evaluator_registry.register_evaluator< account_create_with_delegation_evaluator >();
    _my->_evaluator_registry.register_evaluator< delegate_vesting_shares_evaluator        >();
+   _my->_evaluator_registry.register_evaluator< tbd1_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd2_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd3_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd4_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd5_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd6_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd7_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd8_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd9_evaluator                           >();
+   _my->_evaluator_registry.register_evaluator< tbd10_evaluator                          >();
 }
 
 void database::set_custom_operation_interpreter( const std::string& id, std::shared_ptr< custom_operation_interpreter > registry )
@@ -1983,13 +1538,10 @@ void database::initialize_indexes()
    add_core_index< transaction_index                       >(*this);
    add_core_index< block_summary_index                     >(*this);
    add_core_index< witness_schedule_index                  >(*this);
-   add_core_index< comment_index                           >(*this);
-   add_core_index< comment_vote_index                      >(*this);
    add_core_index< witness_vote_index                      >(*this);
    add_core_index< limit_order_index                       >(*this);
    add_core_index< feed_history_index                      >(*this);
    add_core_index< convert_request_index                   >(*this);
-   add_core_index< liquidity_reward_balance_index          >(*this);
    add_core_index< operation_index                         >(*this);
    add_core_index< account_history_index                   >(*this);
    add_core_index< hardfork_property_index                 >(*this);
@@ -2000,7 +1552,6 @@ void database::initialize_indexes()
    add_core_index< escrow_index                            >(*this);
    add_core_index< savings_withdraw_index                  >(*this);
    add_core_index< decline_voting_rights_request_index     >(*this);
-   add_core_index< reward_fund_index                       >(*this);
    add_core_index< vesting_delegation_index                >(*this);
    add_core_index< vesting_delegation_expiration_index     >(*this);
 
@@ -2032,20 +1583,7 @@ void database::init_genesis( uint64_t init_supply )
       } inhibitor(*this);
 
       // Create blockchain accounts
-      public_key_type      init_public_key(AMALGAM_INIT_PUBLIC_KEY);
-
-      create< account_object >( [&]( account_object& a )
-      {
-         a.name = AMALGAM_MINER_ACCOUNT;
-      } );
-      create< account_authority_object >( [&]( account_authority_object& auth )
-      {
-         auth.account = AMALGAM_MINER_ACCOUNT;
-         auth.owner.weight_threshold = 1;
-         auth.active.weight_threshold = 1;
-         auth.posting.weight_threshold = 1;
-      });
-
+      
       create< account_object >( [&]( account_object& a )
       {
          a.name = AMALGAM_NULL_ACCOUNT;
@@ -2070,39 +1608,58 @@ void database::init_genesis( uint64_t init_supply )
          auth.posting.weight_threshold = 1;
       });
       
-      for( int i = 0; i < AMALGAM_NUM_INIT_WITNESSES; ++i )
+      public_key_type creator_public_key(amalgam::protocol::public_key_type(AMALGAM_CREATOR_PUBLIC_KEY_STR));
+      create< account_object >( [&]( account_object& a )
       {
-         create< account_object >( [&]( account_object& a )
-         {
-            a.name = AMALGAM_INIT_WITNESS_NAME + ( i ? fc::to_string( i ) : std::string() );
-            a.memo_key = init_public_key;
-            if( i == 0 )
-            {
-               a.balance = asset( init_supply - AMALGAM_INIT_VESTING_FUND, AMALGAM_SYMBOL );
-               a.vesting_shares = asset( AMALGAM_INIT_VESTING_SHARES, VESTS_SYMBOL );
-            }
-         } );
+         a.name = AMALGAM_CREATOR_ACCOUNT;
+         a.memo_key = creator_public_key;
+         a.balance = asset( init_supply - AMALGAM_INIT_VESTING_FUND, AMALGAM_SYMBOL );
+         a.vesting_shares = asset( AMALGAM_INIT_VESTING_SHARES, VESTS_SYMBOL );
+      } );
+      create< account_authority_object >( [&]( account_authority_object& auth )
+      {
+         auth.account = AMALGAM_CREATOR_ACCOUNT;
+         auth.owner.add_authority( creator_public_key, 1 );
+         auth.owner.weight_threshold = 1;
+         auth.active = auth.owner;
+         auth.posting = auth.active;
+      });
+      create< witness_object >( [&]( witness_object& w )
+      {
+         w.owner = AMALGAM_CREATOR_ACCOUNT;
+         w.signing_key = creator_public_key;
+         w.schedule = witness_object::top;
+      } );
 
-         create< account_authority_object >( [&]( account_authority_object& auth )
-         {
-            auth.account = AMALGAM_INIT_WITNESS_NAME + ( i ? fc::to_string( i ) : std::string() );
-            auth.owner.add_authority( init_public_key, 1 );
-            auth.owner.weight_threshold = 1;
-            auth.active  = auth.owner;
-            auth.posting = auth.active;
-         });
-
-         create< witness_object >( [&]( witness_object& w )
-         {
-            w.owner        = AMALGAM_INIT_WITNESS_NAME + ( i ? fc::to_string(i) : std::string() );
-            w.signing_key  = init_public_key;
-            w.schedule = witness_object::miner;
-         } );
-      }
-
+      create< account_object >( [&]( account_object& a )
+      {
+         a.name = AMALGAM_REGISTRAR_ACCOUNT;
+      } );
+      create< account_authority_object >( [&]( account_authority_object& auth )
+      {
+         auth.account = AMALGAM_REGISTRAR_ACCOUNT;
+         auth.owner.add_authority( amalgam::protocol::public_key_type(AMALGAM_REGISTRAR_PUBLIC_KEY_STR), 1 );
+         auth.owner.weight_threshold = 1;
+         auth.active = auth.owner;
+         auth.posting = auth.active;
+      });
+      
+      create< account_object >( [&]( account_object& a )
+      {
+         a.name = AMALGAM_REWARD_FUND_ACCOUNT;
+      } );
+      create< account_authority_object >( [&]( account_authority_object& auth )
+      {
+         auth.account = AMALGAM_REWARD_FUND_ACCOUNT;
+         auth.owner.add_authority( amalgam::protocol::public_key_type(AMALGAM_REWARD_FUND_PUBLIC_KEY_STR), 1 );
+         auth.owner.weight_threshold = 1;
+         auth.active = auth.owner;
+         auth.posting = auth.active;
+      });
+      
       create< dynamic_global_property_object >( [&]( dynamic_global_property_object& p )
       {
-         p.current_witness = AMALGAM_INIT_WITNESS_NAME;
+         p.current_witness = AMALGAM_CREATOR_ACCOUNT;
          p.time = AMALGAM_GENESIS_TIME;
          p.recent_slots_filled = fc::uint128::max_value();
          p.participation_count = 128;
@@ -2124,26 +1681,13 @@ void database::init_genesis( uint64_t init_supply )
 
       // Create witness scheduler
       static_assert(
-         AMALGAM_MAX_VOTED_WITNESSES + AMALGAM_MAX_MINER_WITNESSES + AMALGAM_MAX_RUNNER_WITNESSES == AMALGAM_MAX_WITNESSES,
+         AMALGAM_MAX_VOTED_WITNESSES + AMALGAM_MAX_RUNNER_WITNESSES == AMALGAM_MAX_WITNESSES,
          "Witness counts must add up to AMALGAM_MAX_WITNESSES" );
       create< witness_schedule_object >( [&]( witness_schedule_object& wso )
       {
-         wso.current_shuffled_witnesses[0] = AMALGAM_INIT_WITNESS_NAME;
-         wso.witness_pay_normalization_factor = wso.miner_weight;
+         wso.current_shuffled_witnesses[0] = AMALGAM_CREATOR_ACCOUNT;
+         wso.witness_pay_normalization_factor = wso.top_weight;
       } );
-      
-      // Create post reward fund
-      create< reward_fund_object >( [&]( reward_fund_object& rfo )
-      {
-         rfo.name = AMALGAM_POST_REWARD_FUND_NAME;
-         rfo.recent_claims = AMALGAM_INIT_RECENT_CLAIMS;
-         rfo.last_update = head_block_time();
-         rfo.content_constant = AMALGAM_CONTENT_CONSTANT;
-         rfo.percent_curation_rewards = AMALGAM_1_PERCENT * 25;
-         rfo.percent_content_rewards = AMALGAM_100_PERCENT;
-         rfo.author_reward_curve = curve_id::linear;
-         rfo.curation_reward_curve = curve_id::square_root;
-      });
    }
    FC_CAPTURE_AND_RETHROW()
 }
@@ -2308,8 +1852,7 @@ void database::_apply_block( const signed_block& next_block )
       );
    }
 
-   /// modify current witness so transaction evaluators can know who included the transaction,
-   /// this is mostly for POW operations which must pay the current_witness
+   /// modify current witness so transaction evaluators can know who included the transaction
    modify( gprops, [&]( dynamic_global_property_object& dgp ){
       dgp.current_witness = next_block.witness;
    });
@@ -2353,7 +1896,6 @@ void database::_apply_block( const signed_block& next_block )
    clear_null_account_balance();
    process_funds();
    process_conversions();
-   process_comment_cashout();
    process_vesting_withdrawals();
    process_savings_withdraws();
    update_virtual_supply();
@@ -2999,25 +2541,6 @@ void database::adjust_savings_balance( const account_object& a, const asset& del
 }
 
 
-void database::adjust_reward_balance( const account_object& a, const asset& delta )
-{
-   modify( a, [&]( account_object& acnt )
-   {
-      switch( delta.symbol )
-      {
-         case AMALGAM_SYMBOL:
-            acnt.reward_amalgam_balance += delta;
-            break;
-         case ABD_SYMBOL:
-            acnt.reward_abd_balance += delta;
-            break;
-         default:
-            FC_ASSERT( false, "invalid symbol" );
-      }
-   });
-}
-
-
 void database::adjust_supply( const asset& delta )
 {
    const auto& props = get_dynamic_global_properties();
@@ -3164,7 +2687,6 @@ void database::validate_invariants()const
       asset total_supply = asset( 0, AMALGAM_SYMBOL );
       asset total_abd = asset( 0, ABD_SYMBOL );
       asset total_vesting = asset( 0, VESTS_SYMBOL );
-      asset pending_vesting_amalgam = asset( 0, AMALGAM_SYMBOL );
       share_type total_vsf_votes = share_type( 0 );
 
       auto gpo = get_dynamic_global_properties();
@@ -3178,13 +2700,9 @@ void database::validate_invariants()const
       {
          total_supply += itr->balance;
          total_supply += itr->savings_balance;
-         total_supply += itr->reward_amalgam_balance;
          total_abd += itr->abd_balance;
          total_abd += itr->savings_abd_balance;
-         total_abd += itr->reward_abd_balance;
          total_vesting += itr->vesting_shares;
-         total_vesting += itr->reward_vesting_balance;
-         pending_vesting_amalgam += itr->reward_vesting_amalgam;
          total_vsf_votes += ( itr->proxy == AMALGAM_PROXY_TO_SELF_ACCOUNT ?
                                  itr->witness_vote_weight() :
                                  ( AMALGAM_MAX_PROXY_RECURSION_DEPTH > 0 ?
@@ -3245,20 +2763,12 @@ void database::validate_invariants()const
             FC_ASSERT( false, "found savings withdraw that is not ABD or AMALGAM" );
       }
 
-      const auto& reward_idx = get_index< reward_fund_index, by_id >();
-
-      for( auto itr = reward_idx.begin(); itr != reward_idx.end(); ++itr )
-      {
-         total_supply += itr->reward_balance;
-      }
-
-      total_supply += gpo.total_vesting_fund_amalgam + gpo.pending_rewarded_vesting_amalgam;
+      total_supply += gpo.total_vesting_fund_amalgam;
 
       FC_ASSERT( gpo.current_supply == total_supply, "", ("gpo.current_supply",gpo.current_supply)("total_supply",total_supply) );
       FC_ASSERT( gpo.current_abd_supply == total_abd, "", ("gpo.current_abd_supply",gpo.current_abd_supply)("total_abd",total_abd) );
-      FC_ASSERT( gpo.total_vesting_shares + gpo.pending_rewarded_vesting_shares == total_vesting, "", ("gpo.total_vesting_shares",gpo.total_vesting_shares)("total_vesting",total_vesting) );
+      FC_ASSERT( gpo.total_vesting_shares == total_vesting, "", ("gpo.total_vesting_shares",gpo.total_vesting_shares)("total_vesting",total_vesting) );
       FC_ASSERT( gpo.total_vesting_shares.amount == total_vsf_votes, "", ("total_vesting_shares",gpo.total_vesting_shares)("total_vsf_votes",total_vsf_votes) );
-      FC_ASSERT( gpo.pending_rewarded_vesting_amalgam == pending_vesting_amalgam, "", ("pending_rewarded_vesting_amalgam",gpo.pending_rewarded_vesting_amalgam)("pending_vesting_amalgam", pending_vesting_amalgam));
 
       FC_ASSERT( gpo.virtual_supply >= gpo.current_supply );
       if ( !get_feed_history().current_median_history.is_null() )

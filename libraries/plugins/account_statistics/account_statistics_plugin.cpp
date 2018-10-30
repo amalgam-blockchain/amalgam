@@ -1,7 +1,6 @@
 #include <amalgam/account_statistics/account_statistics_api.hpp>
 
 #include <amalgam/chain/account_object.hpp>
-#include <amalgam/chain/comment_object.hpp>
 
 #include <amalgam/chain/database.hpp>
 

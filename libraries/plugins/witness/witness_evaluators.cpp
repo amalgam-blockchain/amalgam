@@ -1,8 +1,6 @@
 #include <amalgam/witness/witness_operations.hpp>
 #include <amalgam/witness/witness_objects.hpp>
 
-#include <amalgam/chain/comment_object.hpp>
-
 namespace amalgam { namespace witness {
 
 void enable_content_editing_evaluator::do_apply( const enable_content_editing_operation& o )

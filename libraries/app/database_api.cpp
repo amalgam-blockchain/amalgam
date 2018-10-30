@@ -4,8 +4,6 @@
 
 #include <amalgam/protocol/get_config.hpp>
 
-#include <amalgam/chain/util/reward.hpp>
-
 #include <fc/bloom_filter.hpp>
 #include <fc/smart_ref_impl.hpp>
 #include <fc/crypto/hex.hpp>
@@ -53,7 +51,6 @@ class database_api_impl : public std::enable_shared_from_this<database_api_impl>
 
       // Market
       order_book get_order_book( uint32_t limit )const;
-      vector< liquidity_balance > get_liquidity_queue( string start_account, uint32_t limit )const;
 
       // Authority / validation
       std::string get_transaction_hex(const signed_transaction& trx)const;
@@ -80,10 +77,6 @@ applied_operation::applied_operation( const operation_object& op_obj )
 {
    //fc::raw::unpack( op_obj.serialized_op, op );     // g++ refuses to compile this as ambiguous
    op = fc::raw::unpack< operation >( op_obj.serialized_op );
-}
-
-void find_accounts( set<string>& accounts, const discussion& d ) {
-   accounts.insert( d.author );
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -257,17 +250,6 @@ scheduled_hardfork database_api::get_next_scheduled_hardfork() const
       shf.hf_version = hpo.next_hardfork;
       shf.live_time = hpo.next_hardfork_time;
       return shf;
-   });
-}
-
-reward_fund_api_obj database_api::get_reward_fund( string name )const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      auto fund = my->_db.find< reward_fund_object, by_name >( name );
-      FC_ASSERT( fund != nullptr, "Invalid reward fund name" );
-
-      return *fund;
    });
 }
 
@@ -676,53 +658,6 @@ order_book database_api_impl::get_order_book( uint32_t limit )const
       ++buy_itr;
    }
 
-
-   return result;
-}
-
-vector< liquidity_balance > database_api::get_liquidity_queue( string start_account, uint32_t limit )const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      return my->get_liquidity_queue( start_account, limit );
-   });
-}
-
-vector< liquidity_balance > database_api_impl::get_liquidity_queue( string start_account, uint32_t limit )const
-{
-   FC_ASSERT( limit <= 1000 );
-
-   const auto& liq_idx = _db.get_index< liquidity_reward_balance_index >().indices().get< by_volume_weight >();
-   auto itr = liq_idx.begin();
-   vector< liquidity_balance > result;
-
-   result.reserve( limit );
-
-   if( start_account.length() )
-   {
-      const auto& liq_by_acc = _db.get_index< liquidity_reward_balance_index >().indices().get< by_owner >();
-      auto acc = liq_by_acc.find( _db.get_account( start_account ).id );
-
-      if( acc != liq_by_acc.end() )
-      {
-         itr = liq_idx.find( boost::make_tuple( acc->weight, acc->owner ) );
-      }
-      else
-      {
-         itr = liq_idx.end();
-      }
-   }
-
-   while( itr != liq_idx.end() && result.size() < limit )
-   {
-      liquidity_balance bal;
-      bal.account = _db.get(itr->owner).name;
-      bal.weight = itr->weight;
-      result.push_back( bal );
-
-      ++itr;
-   }
-
    return result;
 }
 
@@ -919,129 +854,6 @@ vector<convert_request_api_obj> database_api::get_conversion_requests( const str
    });
 }
 
-discussion database_api::get_content( string author, string permlink )const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      const auto& by_permlink_idx = my->_db.get_index< comment_index >().indices().get< by_permlink >();
-      auto itr = by_permlink_idx.find( boost::make_tuple( author, permlink ) );
-      if( itr != by_permlink_idx.end() )
-      {
-         discussion result(*itr);
-         set_pending_payout(result);
-         return result;
-      }
-      return discussion();
-   });
-}
-
-vector<vote_state> database_api::get_active_votes( string author, string permlink )const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      vector<vote_state> result;
-      const auto& comment = my->_db.get_comment( author, permlink );
-      const auto& idx = my->_db.get_index<comment_vote_index>().indices().get< by_comment_voter >();
-      comment_id_type cid(comment.id);
-      auto itr = idx.lower_bound( cid );
-      while( itr != idx.end() && itr->comment == cid )
-      {
-         const auto& vo = my->_db.get(itr->voter);
-         vote_state vstate;
-         vstate.voter = vo.name;
-         vstate.weight = itr->weight;
-         vstate.rshares = itr->rshares;
-         vstate.percent = itr->vote_percent;
-         vstate.time = itr->last_update;
-
-         result.push_back(vstate);
-         ++itr;
-      }
-      return result;
-   });
-}
-
-vector<account_vote> database_api::get_account_votes( string voter )const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      vector<account_vote> result;
-
-      const auto& voter_acnt = my->_db.get_account(voter);
-      const auto& idx = my->_db.get_index<comment_vote_index>().indices().get< by_voter_comment >();
-
-      account_id_type aid(voter_acnt.id);
-      auto itr = idx.lower_bound( aid );
-      auto end = idx.upper_bound( aid );
-      while( itr != end )
-      {
-         const auto& vo = my->_db.get(itr->comment);
-         account_vote avote;
-         avote.authorperm = vo.author + "/" + to_string( vo.permlink );
-         avote.weight = itr->weight;
-         avote.rshares = itr->rshares;
-         avote.percent = itr->vote_percent;
-         avote.time = itr->last_update;
-         result.push_back(avote);
-         ++itr;
-      }
-      return result;
-   });
-}
-
-u256 to256( const fc::uint128& t )
-{
-   u256 result( t.high_bits() );
-   result <<= 65;
-   result += t.low_bits();
-   return result;
-}
-
-void database_api::set_pending_payout( discussion& d )const
-{
-   const auto& hist = my->_db.get_feed_history();
-   const auto& rf = my->_db.get_reward_fund( my->_db.get_comment( d.author, d.permlink ) );
-
-   asset pot = rf.reward_balance;
-
-   if( !hist.current_median_history.is_null() ) pot = pot * hist.current_median_history;
-
-   u256 total_r2 = to256( rf.recent_claims );
-
-   if( total_r2 > 0 )
-   {
-      uint128_t vshares = d.net_rshares.value > 0 ? amalgam::chain::util::evaluate_reward_curve( d.net_rshares.value, rf.author_reward_curve, rf.content_constant ) : 0;
-
-      u256 r2 = to256(vshares);
-      r2 = ( r2 * d.reward_weight ) / AMALGAM_100_PERCENT;
-      r2 *= pot.amount.value;
-      r2 /= total_r2;
-
-      d.pending_payout_value = asset( static_cast<uint64_t>(r2), pot.symbol );
-   }
-
-   if( d.parent_author != AMALGAM_ROOT_POST_PARENT )
-      d.cashout_time = my->_db.calculate_discussion_payout_time( my->_db.get< comment_object >( d.id ) );
-}
-
-vector<discussion> database_api::get_content_replies( string author, string permlink )const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      account_name_type acc_name = account_name_type( author );
-      const auto& by_parent_idx = my->_db.get_index< comment_index >().indices().get< by_parent >();
-      auto itr = by_parent_idx.find( boost::make_tuple( acc_name, permlink ) );
-      vector<discussion> result;
-      while( itr != by_parent_idx.end() && itr->parent_author == author && to_string( itr->parent_permlink ) == permlink )
-      {
-         result.push_back( discussion( *itr ) );
-         set_pending_payout( result.back() );
-         ++itr;
-      }
-      return result;
-   });
-}
-
 map< uint32_t, applied_operation > database_api::get_account_history( string account, uint64_t from, uint32_t limit )const
 {
    FC_ASSERT(limit <= 10000, "Limit of ${l} is greater than maximum allowed", ("l", limit));
@@ -1064,23 +876,6 @@ map< uint32_t, applied_operation > database_api::get_account_history( string acc
          result[itr->sequence] = my->_db.get(itr->op);
          ++itr;
          ++n;
-      }
-      return result;
-   });
-}
-
-vector<account_name_type> database_api::get_miner_queue()const
-{
-   return my->_db.with_read_lock( [&]()
-   {
-      vector<account_name_type> result;
-      const auto& pow_idx = my->_db.get_index<witness_index>().indices().get<by_pow>();
-
-      auto itr = pow_idx.upper_bound(0);
-      while( itr != pow_idx.end() ) {
-         if( itr->pow_worker )
-            result.push_back( itr->owner );
-         ++itr;
       }
       return result;
    });

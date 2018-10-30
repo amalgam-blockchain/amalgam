@@ -51,12 +51,6 @@ struct scheduled_hardfork
    fc::time_point_sec   live_time;
 };
 
-struct liquidity_balance
-{
-   string               account;
-   fc::uint128_t        weight;
-};
-
 struct withdraw_route
 {
    string               from_account;
@@ -101,7 +95,6 @@ class database_api
       ~database_api();
 
       vector< account_name_type > get_active_witnesses()const;
-      vector< account_name_type > get_miner_queue()const;
 
       /////////////////////////////
       // Blocks and transactions //
@@ -153,7 +146,6 @@ class database_api
       witness_schedule_api_obj         get_witness_schedule()const;
       hardfork_version                 get_hardfork_version()const;
       scheduled_hardfork               get_next_scheduled_hardfork()const;
-      reward_fund_api_obj              get_reward_fund( string name )const;
 
       //////////////
       // Accounts //
@@ -252,13 +244,6 @@ class database_api
       order_book get_order_book( uint32_t limit = 1000 )const;
       vector<extended_limit_order> get_open_orders( string owner )const;
 
-      /**
-       * @breif Gets the current liquidity reward queue.
-       * @param start_account The account to start the list from, or "" to get the head of the queue
-       * @param limit Maxmimum number of accounts to return -- Must not exceed 1000
-       */
-      vector< liquidity_balance > get_liquidity_queue( string start_account, uint32_t limit = 1000 )const;
-
       ////////////////////////////
       // Authority / validation //
       ////////////////////////////
@@ -296,13 +281,6 @@ class database_api
        */
       verify_signatures_return verify_signatures( const verify_signatures_args& args )const;
 
-      vector<vote_state> get_active_votes( string author, string permlink )const;
-      vector<account_vote> get_account_votes( string voter )const;
-
-
-      discussion           get_content( string author, string permlink )const;
-      vector<discussion>   get_content_replies( string parent, string parent_permlink )const;
-
       /**
        *  Account operations have sequence numbers from 0 to N where N is the most recent operation. This method
        *  returns operations in the range [from-limit, from]
@@ -318,8 +296,6 @@ class database_api
       void on_api_startup();
 
    private:
-      void set_pending_payout( discussion& d )const;
-
       std::shared_ptr< database_api_impl >   my;
 };
 
@@ -328,7 +304,6 @@ class database_api
 FC_REFLECT( amalgam::app::order, (order_price)(real_price)(amalgam)(abd)(created) );
 FC_REFLECT( amalgam::app::order_book, (asks)(bids) );
 FC_REFLECT( amalgam::app::scheduled_hardfork, (hf_version)(live_time) );
-FC_REFLECT( amalgam::app::liquidity_balance, (account)(weight) );
 FC_REFLECT( amalgam::app::withdraw_route, (from_account)(to_account)(percent)(auto_vest) );
 
 FC_REFLECT_ENUM( amalgam::app::withdraw_route_type, (incoming)(outgoing)(all) );
@@ -351,7 +326,6 @@ FC_API(amalgam::app::database_api,
    (get_witness_schedule)
    (get_hardfork_version)
    (get_next_scheduled_hardfork)
-   (get_reward_fund)
 
    // Accounts
    (get_accounts)
@@ -373,7 +347,6 @@ FC_API(amalgam::app::database_api,
    // Market
    (get_order_book)
    (get_open_orders)
-   (get_liquidity_queue)
 
    // Authority / validation
    (get_transaction_hex)
@@ -384,14 +357,6 @@ FC_API(amalgam::app::database_api,
    (verify_account_authority)
    (verify_signatures)
 
-   // votes
-   (get_active_votes)
-   (get_account_votes)
-
-   // content
-   (get_content)
-   (get_content_replies)
-
    // Witnesses
    (get_witnesses)
    (get_witness_by_account)
@@ -399,5 +364,4 @@ FC_API(amalgam::app::database_api,
    (lookup_witness_accounts)
    (get_witness_count)
    (get_active_witnesses)
-   (get_miner_queue)
 )

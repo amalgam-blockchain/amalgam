@@ -81,21 +81,6 @@ struct bucket_object : public object< bucket_object_type, bucket_object >
    share_type           abd_paid_as_interest = 0;                    ///< ABD paid as interest
    uint32_t             paid_accounts_created = 0;                   ///< Accounts created with fee
    uint32_t             mined_accounts_created = 0;                  ///< Accounts mined for free
-   uint32_t             root_comments = 0;                           ///< Top level root comments
-   uint32_t             root_comment_edits = 0;                      ///< Edits to root comments
-   uint32_t             root_comments_deleted = 0;                   ///< Root comments deleted
-   uint32_t             replies = 0;                                 ///< Replies to comments
-   uint32_t             reply_edits = 0;                             ///< Edits to replies
-   uint32_t             replies_deleted = 0;                         ///< Replies deleted
-   uint32_t             new_root_votes = 0;                          ///< New votes on root comments
-   uint32_t             changed_root_votes = 0;                      ///< Changed votes on root comments
-   uint32_t             new_reply_votes = 0;                         ///< New votes on replies
-   uint32_t             changed_reply_votes = 0;                     ///< Changed votes on replies
-   uint32_t             payouts = 0;                                 ///< Number of comment payouts
-   share_type           abd_paid_to_authors = 0;                     ///< Ammount of ABD paid to authors
-   share_type           vests_paid_to_authors = 0;                   ///< Ammount of VESS paid to authors
-   share_type           vests_paid_to_curators = 0;                  ///< Ammount of VESTS paid to curators
-   share_type           liquidity_rewards_paid = 0;                  ///< Ammount of AMALGAM paid to market makers
    uint32_t             transfers_to_vesting = 0;                    ///< Transfers of AMALGAM into VESTS
    share_type           amalgam_vested = 0;                            ///< Ammount of AMALGAM vested
    uint32_t             new_vesting_withdrawal_requests = 0;         ///< New vesting withdrawal requests
@@ -112,8 +97,6 @@ struct bucket_object : public object< bucket_object_type, bucket_object >
    uint32_t             limit_orders_created = 0;                    ///< Limit orders created
    uint32_t             limit_orders_filled = 0;                     ///< Limit orders filled
    uint32_t             limit_orders_cancelled = 0;                  ///< Limit orders cancelled
-   uint32_t             total_pow = 0;                               ///< POW submitted
-   uint128_t            estimated_hashpower = 0;                     ///< Estimated average hashpower over interval
 };
 
 typedef oid< bucket_object > bucket_id_type;
@@ -150,21 +133,6 @@ FC_REFLECT( amalgam::blockchain_statistics::bucket_object,
    (abd_paid_as_interest)
    (paid_accounts_created)
    (mined_accounts_created)
-   (root_comments)
-   (root_comment_edits)
-   (root_comments_deleted)
-   (replies)
-   (reply_edits)
-   (replies_deleted)
-   (new_root_votes)
-   (changed_root_votes)
-   (new_reply_votes)
-   (changed_reply_votes)
-   (payouts)
-   (abd_paid_to_authors)
-   (vests_paid_to_authors)
-   (vests_paid_to_curators)
-   (liquidity_rewards_paid)
    (transfers_to_vesting)
    (amalgam_vested)
    (new_vesting_withdrawal_requests)
@@ -181,7 +149,5 @@ FC_REFLECT( amalgam::blockchain_statistics::bucket_object,
    (limit_orders_created)
    (limit_orders_filled)
    (limit_orders_cancelled)
-   (total_pow)
-   (estimated_hashpower)
 )
 CHAINBASE_SET_INDEX_TYPE( amalgam::blockchain_statistics::bucket_object, amalgam::blockchain_statistics::bucket_index )

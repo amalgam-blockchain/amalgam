@@ -102,23 +102,6 @@ namespace detail
       _self.database().set_custom_operation_interpreter( _self.plugin_name(), _custom_operation_interpreter );
    }
 
-   struct comment_options_extension_visitor
-   {
-      comment_options_extension_visitor( const comment_object& c, const database& db ) : _c( c ), _db( db ) {}
-
-      typedef void result_type;
-
-      const comment_object& _c;
-      const database& _db;
-
-      void operator()( const comment_payout_beneficiaries& cpb )const
-      {
-         AMALGAM_ASSERT( cpb.beneficiaries.size() <= 8,
-            chain::plugin_exception,
-            "Cannot specify more than 8 beneficiaries." );
-      }
-   };
-
    void check_memo( const string& memo, const account_object& account, const account_authority_object& auth )
    {
       vector< public_key_type > keys;
@@ -182,42 +165,6 @@ namespace detail
 
       template< typename T >
       void operator()( const T& )const {}
-
-      void operator()( const comment_options_operation& o )const
-      {
-         const auto& comment = _db.get_comment( o.author, o.permlink );
-
-         comment_options_extension_visitor v( comment, _db );
-
-         for( auto& e : o.extensions )
-         {
-            e.visit( v );
-         }
-      }
-
-      void operator()( const comment_operation& o )const
-      {
-         if( o.parent_author != AMALGAM_ROOT_POST_PARENT )
-         {
-            const auto& parent = _db.find_comment( o.parent_author, o.parent_permlink );
-
-            if( parent != nullptr )
-            AMALGAM_ASSERT( parent->depth < AMALGAM_SOFT_MAX_COMMENT_DEPTH,
-               chain::plugin_exception,
-               "Comment is nested ${x} posts deep, maximum depth is ${y}.", ("x",parent->depth)("y",AMALGAM_SOFT_MAX_COMMENT_DEPTH) );
-         }
-
-         auto itr = _db.find< comment_object, by_permlink >( boost::make_tuple( o.author, o.permlink ) );
-
-         if( itr != nullptr && itr->cashout_time == fc::time_point_sec::maximum() )
-         {
-            auto edit_lock = _db.find< content_edit_lock_object, by_account >( o.author );
-
-            AMALGAM_ASSERT( edit_lock != nullptr && _db.head_block_time() < edit_lock->lock_time,
-               chain::plugin_exception,
-               "The comment is archived" );
-         }
-      }
 
       void operator()( const transfer_operation& o )const
       {
@@ -309,7 +256,7 @@ namespace detail
             * the reserve ratio will half. Likewise, if it is at 12% it will increase by 50%.
             *
             * If the reserve ratio is consistently low, then it is probably time to increase
-            * the capcacity of the network.
+            * the capacity of the network.
             *
             * This algorithm is designed to react quickly to observations significantly
             * different from past observed behavior and make small adjustments when
@@ -441,7 +388,7 @@ void witness_plugin::plugin_set_program_options(
          ("required-participation", bpo::bool_switch()->notifier([this](int e){_required_witness_participation = uint32_t(e*AMALGAM_1_PERCENT);}), "Percent of witnesses (0-99) that must be participating in order to produce blocks")
          ("witness,w", bpo::value<vector<string>>()->composing()->multitoken(),
           ("name of witness controlled by this node (e.g. " + witness_id_example+" )" ).c_str())
-         ("private-key", bpo::value<vector<string>>()->composing()->multitoken(), "WIF PRIVATE KEY to be used by one or more witnesses or miners" )
+         ("private-key", bpo::value<vector<string>>()->composing()->multitoken(), "WIF PRIVATE KEY to be used by one or more witnesses" )
          ;
    config_file_options.add(command_line_options);
 }

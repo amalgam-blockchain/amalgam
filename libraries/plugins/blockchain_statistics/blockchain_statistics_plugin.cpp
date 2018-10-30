@@ -2,7 +2,6 @@
 
 #include <amalgam/app/impacted.hpp>
 #include <amalgam/chain/account_object.hpp>
-#include <amalgam/chain/comment_object.hpp>
 #include <amalgam/chain/history_object.hpp>
 
 #include <amalgam/chain/database.hpp>
@@ -73,105 +72,6 @@ struct operation_process
       _db.modify( _bucket, [&]( bucket_object& b )
       {
          b.paid_accounts_created++;
-      });
-   }
-
-   void operator()( const pow_operation& op )const
-   {
-      _db.modify( _bucket, [&]( bucket_object& b )
-      {
-         auto& worker = _db.get_account( op.worker_account );
-
-         if( worker.created == _db.head_block_time() )
-            b.mined_accounts_created++;
-
-         b.total_pow++;
-
-         uint64_t bits = ( _db.get_dynamic_global_properties().num_pow_witnesses / 4 ) + 4;
-         uint128_t estimated_hashes = ( 1 << bits );
-         uint32_t delta_t;
-
-         if( b.seconds == 0 )
-            delta_t = _db.head_block_time().sec_since_epoch() - b.open.sec_since_epoch();
-         else
-         	delta_t = b.seconds;
-
-         b.estimated_hashpower = ( b.estimated_hashpower * delta_t + estimated_hashes ) / delta_t;
-      });
-   }
-
-   void operator()( const comment_operation& op )const
-   {
-      _db.modify( _bucket, [&]( bucket_object& b )
-      {
-         auto& comment = _db.get_comment( op.author, op.permlink );
-
-         if( comment.created == _db.head_block_time() )
-         {
-            if( comment.parent_author.length() )
-               b.replies++;
-            else
-               b.root_comments++;
-         }
-         else
-         {
-            if( comment.parent_author.length() )
-               b.reply_edits++;
-            else
-               b.root_comment_edits++;
-         }
-      });
-   }
-
-   void operator()( const vote_operation& op )const
-   {
-      _db.modify( _bucket, [&]( bucket_object& b )
-      {
-         const auto& cv_idx = _db.get_index< comment_vote_index >().indices().get< by_comment_voter >();
-         auto& comment = _db.get_comment( op.author, op.permlink );
-         auto& voter = _db.get_account( op.voter );
-         auto itr = cv_idx.find( boost::make_tuple( comment.id, voter.id ) );
-
-         if( itr->num_changes )
-         {
-            if( comment.parent_author.size() )
-               b.new_reply_votes++;
-            else
-               b.new_root_votes++;
-         }
-         else
-         {
-            if( comment.parent_author.size() )
-               b.changed_reply_votes++;
-            else
-               b.changed_root_votes++;
-         }
-      });
-   }
-
-   void operator()( const author_reward_operation& op )const
-   {
-      _db.modify( _bucket, [&]( bucket_object& b )
-      {
-         b.payouts++;
-         b.abd_paid_to_authors += op.abd_payout.amount;
-         b.vests_paid_to_authors += op.vesting_payout.amount;
-      });
-   }
-
-   void operator()( const curation_reward_operation& op )const
-   {
-      _db.modify( _bucket, [&]( bucket_object& b )
-      {
-         b.vests_paid_to_curators += op.reward.amount;
-      });
-   }
-
-   void operator()( const liquidity_reward_operation& op )const
-   {
-      _db.modify( _bucket, [&]( bucket_object& b )
-      {
-         b.liquidity_rewards_paid += op.payout.amount;
       });
    }
 
@@ -337,21 +237,7 @@ void blockchain_statistics_plugin_impl::pre_operation( const operation_notificat
 
    for( auto bucket_id : _current_buckets )
    {
-      if( o.op.which() == operation::tag< delete_comment_operation >::value )
-      {
-         delete_comment_operation op = o.op.get< delete_comment_operation >();
-         auto comment = db.get_comment( op.author, op.permlink );
-         const auto& bucket = db.get(bucket_id);
-
-         db.modify( bucket, [&]( bucket_object& b )
-         {
-            if( comment.parent_author.length() )
-               b.replies_deleted++;
-            else
-               b.root_comments_deleted++;
-         });
-      }
-      else if( o.op.which() == operation::tag< withdraw_vesting_operation >::value )
+      if( o.op.which() == operation::tag< withdraw_vesting_operation >::value )
       {
          withdraw_vesting_operation op = o.op.get< withdraw_vesting_operation >();
          auto& account = db.get_account( op.account );

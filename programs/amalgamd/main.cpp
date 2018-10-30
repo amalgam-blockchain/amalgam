@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
       std::cerr << "------------------------------------------------------\n\n";
       std::cerr << "            STARTING TEST NETWORK\n\n";
       std::cerr << "------------------------------------------------------\n";
-      std::cerr << "initminer public key: " << AMALGAM_INIT_PUBLIC_KEY_STR << "\n";
+      std::cerr << "creator public key: " << AMALGAM_CREATOR_PUBLIC_KEY_STR << "\n";
       std::cerr << "chain id: " << std::string(AMALGAM_CHAIN_ID) << "\n";
       std::cerr << "blockchain version: " << fc::string( AMALGAM_BLOCKCHAIN_VERSION ) << "\n";
       std::cerr << "------------------------------------------------------\n";
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
       std::cerr << "------------------------------------------------------\n\n";
       std::cerr << "            STARTING AMALGAM NETWORK\n\n";
       std::cerr << "------------------------------------------------------\n";
-      std::cerr << "initminer public key: " << AMALGAM_INIT_PUBLIC_KEY_STR << "\n";
+      std::cerr << "creator public key: " << AMALGAM_CREATOR_PUBLIC_KEY_STR << "\n";
       std::cerr << "chain id: " << std::string(AMALGAM_CHAIN_ID) << "\n";
       std::cerr << "blockchain version: " << fc::string( AMALGAM_BLOCKCHAIN_VERSION ) << "\n";
       std::cerr << "------------------------------------------------------\n";
