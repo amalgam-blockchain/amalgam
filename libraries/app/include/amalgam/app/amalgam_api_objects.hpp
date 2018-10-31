@@ -60,9 +60,7 @@ struct account_api_obj
       withdrawn( a.withdrawn ),
       to_withdraw( a.to_withdraw ),
       withdraw_routes( a.withdraw_routes ),
-      witnesses_voted_for( a.witnesses_voted_for ),
-      last_post( a.last_post ),
-      last_root_post( a.last_root_post )
+      witnesses_voted_for( a.witnesses_voted_for )
    {
       size_t n = a.proxied_vsf_votes.size();
       proxied_vsf_votes.reserve( n );
@@ -155,9 +153,6 @@ struct account_api_obj
    share_type        average_market_bandwidth = 0;
    share_type        lifetime_market_bandwidth = 0;
    time_point_sec    last_market_bandwidth_update;
-
-   time_point_sec    last_post;
-   time_point_sec    last_root_post;
 };
 
 struct owner_authority_history_api_obj
@@ -193,11 +188,6 @@ struct account_recovery_request_api_obj
    account_name_type                account_to_recover;
    authority                        new_owner_authority;
    time_point_sec                   expires;
-};
-
-struct account_history_api_obj
-{
-
 };
 
 struct savings_withdraw_api_obj
@@ -343,7 +333,6 @@ FC_REFLECT( amalgam::app::account_api_obj,
              (proxied_vsf_votes)(witnesses_voted_for)
              (average_bandwidth)(lifetime_bandwidth)(last_bandwidth_update)
              (average_market_bandwidth)(lifetime_market_bandwidth)(last_market_bandwidth_update)
-             (last_post)(last_root_post)
           )
 
 FC_REFLECT( amalgam::app::owner_authority_history_api_obj,

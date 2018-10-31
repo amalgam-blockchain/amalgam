@@ -89,10 +89,6 @@ namespace amalgam { namespace chain {
 
          uint16_t          witnesses_voted_for = 0;
 
-         time_point_sec    last_post;
-         time_point_sec    last_root_post = fc::time_point_sec::min();
-         uint32_t          post_bandwidth = 0;
-
          /// This function should be used only when the account votes for a witness directly
          share_type        witness_vote_weight()const {
             return std::accumulate( proxied_vsf_votes.begin(),
@@ -222,12 +218,10 @@ namespace amalgam { namespace chain {
 
    struct by_name;
    struct by_proxy;
-   struct by_last_post;
    struct by_next_vesting_withdrawal;
    struct by_amalgam_balance;
    struct by_smp_balance;
    struct by_smd_balance;
-   struct by_vote_count;
 
    /**
     * @ingroup object_index
@@ -250,13 +244,6 @@ namespace amalgam { namespace chain {
                member< account_object, time_point_sec, &account_object::next_vesting_withdrawal >,
                member< account_object, account_id_type, &account_object::id >
             > /// composite key by_next_vesting_withdrawal
-         >,
-         ordered_unique< tag< by_last_post >,
-            composite_key< account_object,
-               member< account_object, time_point_sec, &account_object::last_post >,
-               member< account_object, account_id_type, &account_object::id >
-            >,
-            composite_key_compare< std::greater< time_point_sec >, std::less< account_id_type > >
          >,
          ordered_unique< tag< by_amalgam_balance >,
             composite_key< account_object,
@@ -436,7 +423,6 @@ FC_REFLECT( amalgam::chain::account_object,
              (vesting_shares)(delegated_vesting_shares)(received_vesting_shares)
              (vesting_withdraw_rate)(next_vesting_withdrawal)(withdrawn)(to_withdraw)(withdraw_routes)
              (proxied_vsf_votes)(witnesses_voted_for)
-             (last_post)(last_root_post)(post_bandwidth)
           )
 CHAINBASE_SET_INDEX_TYPE( amalgam::chain::account_object, amalgam::chain::account_index )
 
