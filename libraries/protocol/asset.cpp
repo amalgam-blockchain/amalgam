@@ -113,60 +113,45 @@ namespace amalgam { namespace protocol {
          FC_CAPTURE_AND_RETHROW( (from) )
       }
 
-      bool operator == ( const price& a, const price& b )
-      {
-         if( std::tie( a.base.symbol, a.quote.symbol ) != std::tie( b.base.symbol, b.quote.symbol ) )
-             return false;
+void asset::validate()const
+{
+   FC_ASSERT( ( symbol == AMALGAM_SYMBOL ) || ( symbol == VESTS_SYMBOL ) || ( symbol == ABD_SYMBOL ) );
+   FC_ASSERT( amount.value >= 0 );
+   FC_ASSERT( amount.value <= AMALGAM_MAX_SATOSHIS );
+}
 
-         const auto amult = uint128_t( b.quote.amount.value ) * a.base.amount.value;
-         const auto bmult = uint128_t( a.quote.amount.value ) * b.base.amount.value;
+#define BQ(a) \
+   std::tie( a.base.symbol, a.quote.symbol )
 
-         return amult == bmult;
-      }
+#define DEFINE_PRICE_COMPARISON_OPERATOR( op ) \
+bool operator op ( const price& a, const price& b ) \
+{ \
+   if( BQ(a) != BQ(b) ) \
+      return BQ(a) op BQ(b); \
+   \
+   const uint128_t amult = uint128_t( b.quote.amount.value ) * a.base.amount.value; \
+   const uint128_t bmult = uint128_t( a.quote.amount.value ) * b.base.amount.value; \
+   \
+   return amult op bmult;  \
+}
 
-      bool operator < ( const price& a, const price& b )
-      {
-         if( a.base.symbol < b.base.symbol ) return true;
-         if( a.base.symbol > b.base.symbol ) return false;
-         if( a.quote.symbol < b.quote.symbol ) return true;
-         if( a.quote.symbol > b.quote.symbol ) return false;
-
-         const auto amult = uint128_t( b.quote.amount.value ) * a.base.amount.value;
-         const auto bmult = uint128_t( a.quote.amount.value ) * b.base.amount.value;
-
-         return amult < bmult;
-      }
-
-      bool operator <= ( const price& a, const price& b )
-      {
-         return (a == b) || (a < b);
-      }
-
-      bool operator != ( const price& a, const price& b )
-      {
-         return !(a == b);
-      }
-
-      bool operator > ( const price& a, const price& b )
-      {
-         return !(a <= b);
-      }
-
-      bool operator >= ( const price& a, const price& b )
-      {
-         return !(a < b);
-      }
+DEFINE_PRICE_COMPARISON_OPERATOR( == )
+DEFINE_PRICE_COMPARISON_OPERATOR( != )
+DEFINE_PRICE_COMPARISON_OPERATOR( <  )
+DEFINE_PRICE_COMPARISON_OPERATOR( <= )
+DEFINE_PRICE_COMPARISON_OPERATOR( >  )
+DEFINE_PRICE_COMPARISON_OPERATOR( >= )
 
       asset operator * ( const asset& a, const price& b )
       {
-         if( a.symbol_name() == b.base.symbol_name() )
+         if( a.symbol == b.base.symbol )
          {
             FC_ASSERT( b.base.amount.value > 0 );
             uint128_t result = (uint128_t(a.amount.value) * b.quote.amount.value)/b.base.amount.value;
             FC_ASSERT( result.hi == 0 );
             return asset( result.to_uint64(), b.quote.symbol );
          }
-         else if( a.symbol_name() == b.quote.symbol_name() )
+         else if( a.symbol == b.quote.symbol )
          {
             FC_ASSERT( b.quote.amount.value > 0 );
             uint128_t result = (uint128_t(a.amount.value) * b.base.amount.value)/b.quote.amount.value;
@@ -178,12 +163,12 @@ namespace amalgam { namespace protocol {
 
       price operator / ( const asset& base, const asset& quote )
       { try {
-         FC_ASSERT( base.symbol_name() != quote.symbol_name() );
+         FC_ASSERT( base.symbol != quote.symbol );
          return price{ base, quote };
       } FC_CAPTURE_AND_RETHROW( (base)(quote) ) }
 
-      price price::max( asset_symbol_type base, asset_symbol_type quote ) { return asset( share_type(AMALGAM_MAX_SHARE_SUPPLY), base ) / asset( share_type(1), quote); }
-      price price::min( asset_symbol_type base, asset_symbol_type quote ) { return asset( 1, base ) / asset( AMALGAM_MAX_SHARE_SUPPLY, quote); }
+      price price::max( asset_symbol_type base, asset_symbol_type quote ) { return asset( share_type(AMALGAM_MAX_SATOSHIS), base ) / asset( share_type(1), quote); }
+      price price::min( asset_symbol_type base, asset_symbol_type quote ) { return asset( 1, base ) / asset( AMALGAM_MAX_SATOSHIS, quote); }
 
       bool price::is_null() const { return *this == price(); }
 
@@ -191,7 +176,7 @@ namespace amalgam { namespace protocol {
       { try {
          FC_ASSERT( base.amount > share_type(0) );
          FC_ASSERT( quote.amount > share_type(0) );
-         FC_ASSERT( base.symbol_name() != quote.symbol_name() );
+         FC_ASSERT( base.symbol != quote.symbol );
       } FC_CAPTURE_AND_RETHROW( (base)(quote) ) }
 
 

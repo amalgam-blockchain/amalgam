@@ -49,6 +49,11 @@ variant cli::send_call( api_id_type api_id, string method_name, variants args /*
    FC_ASSERT(false);
 }
 
+variant cli::send_call( string api_name, string method_name, variants args /* = variants() */ )
+{
+   FC_ASSERT(false);
+}
+
 variant cli::send_callback( uint64_t callback_id, variants args /* = variants() */ )
 {
    FC_ASSERT(false);
@@ -136,17 +141,17 @@ char * dupstr (const char* s) {
 
 char* my_generator(const char* text, int state)
 {
-   static int list_index, len;
-   const char *name;
+   static size_t list_index = 0, len = 0;
+   const char *name = nullptr;
 
    if (!state) {
       list_index = 0;
       len = strlen (text);
    }
 
-   auto& cmd = cli_commands();
+   const auto& cmd = cli_commands();
 
-   while( list_index < cmd.size() ) 
+   while( list_index < cmd.size() )
    {
       name = cmd[list_index].c_str();
       list_index++;
@@ -159,21 +164,20 @@ char* my_generator(const char* text, int state)
    return ((char *)NULL);
 }
 
-
+#ifdef HAVE_READLINE
 static char** cli_completion( const char * text , int start, int end)
 {
    char **matches;
    matches = (char **)NULL;
 
-#ifdef HAVE_READLINE
    if (start == 0)
       matches = rl_completion_matches ((char*)text, &my_generator);
    else
       rl_bind_key('\t',rl_abort);
-#endif
 
    return (matches);
 }
+#endif
 
 
 void cli::getline( const fc::string& prompt, fc::string& line)
@@ -181,7 +185,7 @@ void cli::getline( const fc::string& prompt, fc::string& line)
    // getting file descriptor for C++ streams is near impossible
    // so we just assume it's the same as the C stream...
 #ifdef HAVE_READLINE
-#ifndef WIN32   
+#ifndef WIN32
    if( isatty( fileno( stdin ) ) )
 #else
    // it's implied by

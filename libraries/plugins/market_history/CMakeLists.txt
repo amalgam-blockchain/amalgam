@@ -1,16 +1,22 @@
-file(GLOB HEADERS "include/amalgam/market_history/*.hpp")
+file(GLOB HEADERS "include/amalgam/plugins/market_history/*.hpp")
 
-add_library( amalgam_market_history
+add_library( market_history_plugin
              market_history_plugin.cpp
-             market_history_api.cpp
            )
 
-target_link_libraries( amalgam_market_history amalgam_chain amalgam_protocol amalgam_app )
-target_include_directories( amalgam_market_history
+target_link_libraries( market_history_plugin chain_plugin )
+target_include_directories( market_history_plugin
                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      market_history_plugin PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
+
 install( TARGETS
-   amalgam_market_history
+   market_history_plugin
 
    RUNTIME DESTINATION bin
    LIBRARY DESTINATION lib

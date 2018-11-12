@@ -25,9 +25,6 @@ ZERO_CHECK.*
 CMakeCache.txt
 install_manifest.txt
 
-!cmake/
-!cmake/*.cmake
-
 # Windows/Visual Studio
 *.vcproj*
 *.sln

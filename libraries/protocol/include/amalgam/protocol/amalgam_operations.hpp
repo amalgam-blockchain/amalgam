@@ -2,15 +2,11 @@
 #include <amalgam/protocol/base.hpp>
 #include <amalgam/protocol/block_header.hpp>
 #include <amalgam/protocol/asset.hpp>
-
-#include <fc/utf8.hpp>
+#include <amalgam/protocol/validation.hpp>
 
 namespace amalgam { namespace protocol {
 
-   inline void validate_account_name( const string& name )
-   {
-      FC_ASSERT( is_valid_account_name( name ), "Account name ${n} is invalid", ("n", name) );
-   }
+   void validate_auth_size( const authority& a );
 
    struct account_create_operation : public base_operation
    {
@@ -176,16 +172,15 @@ namespace amalgam { namespace protocol {
 
 
    /**
-    *  This operation converts AMALGAM into VFS (Vesting Fund Shares) at
-    *  the current exchange rate. With this operation it is possible to
-    *  give another account vesting shares so that faucets can
-    *  pre-fund new accounts with vesting shares.
+    *  This operation converts liquid token (AMALGAM) into solid token (VESTS)
+    *  at the current exchange rate. With this operation it is possible to
+    *  give another account vesting shares so that faucets can pre-fund new accounts with vesting shares.
     */
    struct transfer_to_vesting_operation : public base_operation
    {
       account_name_type from;
-      account_name_type to; ///< if null, then same as from
-      asset             amount; ///< must be AMALGAM
+      account_name_type to;      ///< if null, then same as from
+      asset             amount;  ///< must be AMALGAM
 
       void validate()const;
       void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
@@ -243,7 +238,7 @@ namespace amalgam { namespace protocol {
        *  This fee, paid in AMALGAM, is converted into VESTING SHARES for the new account. Accounts
        *  without vesting shares cannot earn usage rations and therefore are powerless. This minimum
        *  fee requires all accounts to have some kind of commitment to the network that includes the
-       *  ability to vote and make transactions.
+       *  ability to make transactions.
        */
       asset             account_creation_fee =
          asset( AMALGAM_MIN_ACCOUNT_CREATION_FEE, AMALGAM_SYMBOL );
@@ -291,6 +286,27 @@ namespace amalgam { namespace protocol {
       void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(owner); }
    };
 
+   struct witness_set_properties_operation : public base_operation
+   {
+      account_name_type                   owner;
+      flat_map< string, vector< char > >  props;
+      extensions_type                     extensions;
+
+      void validate()const;
+      void get_required_authorities( vector< authority >& a )const
+      {
+         auto key_itr = props.find( "key" );
+
+         if( key_itr != props.end() )
+         {
+            public_key_type signing_key;
+            fc::raw::unpack_from_vector( key_itr->second, signing_key );
+            a.push_back( authority( 1, signing_key, 1 ) );
+         }
+         else
+            a.push_back( authority( 1, AMALGAM_NULL_ACCOUNT, 1 ) ); // The null account auth is impossible to satisfy
+      }
+   };
 
    /**
     * All accounts with a VFS can vote for or against any witness.
@@ -530,7 +546,7 @@ namespace amalgam { namespace protocol {
     * The operation must be signed by keys that satisfy both the new owner authority
     * and the recent owner authority. Failing either fails the operation entirely.
     *
-    * If a recovery request was made inadvertantly, the account holder should
+    * If a recovery request was made inadvertently, the account holder should
     * contact the recovery account to have the request deleted.
     *
     * The two setp combination of the account recovery request and recover is
@@ -767,6 +783,7 @@ FC_REFLECT( amalgam::protocol::transfer_to_vesting_operation, (from)(to)(amount)
 FC_REFLECT( amalgam::protocol::withdraw_vesting_operation, (account)(vesting_shares) )
 FC_REFLECT( amalgam::protocol::set_withdraw_vesting_route_operation, (from_account)(to_account)(percent)(auto_vest) )
 FC_REFLECT( amalgam::protocol::witness_update_operation, (owner)(url)(block_signing_key)(props)(fee) )
+FC_REFLECT( amalgam::protocol::witness_set_properties_operation, (owner)(props)(extensions) )
 FC_REFLECT( amalgam::protocol::account_witness_vote_operation, (account)(witness)(approve) )
 FC_REFLECT( amalgam::protocol::account_witness_proxy_operation, (account)(proxy) )
 FC_REFLECT( amalgam::protocol::custom_operation, (required_auths)(id)(data) )

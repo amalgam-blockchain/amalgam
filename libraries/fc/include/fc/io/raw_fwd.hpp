@@ -20,6 +20,7 @@ namespace fc {
    class variant_object;
    class path;
    template<typename... Types> class static_variant;
+   template<typename T, size_t N> class int_array;
 
    template<typename IntType, typename EnumType> class enum_type;
    namespace ip { class endpoint; }
@@ -41,8 +42,10 @@ namespace fc {
 
 
 
-    template<typename Stream, typename T> inline void pack( Stream& s, const std::set<T>& value );
-    template<typename Stream, typename T> inline void unpack( Stream& s, std::set<T>& value );
+    template<typename Stream, typename... T> inline void pack( Stream& s, const std::set<T...>& value );
+    template<typename Stream, typename... T> inline void unpack( Stream& s, std::set<T...>& value );
+    template<typename Stream, typename... T> inline void pack( Stream& s, const std::multiset<T...>& value );
+    template<typename Stream, typename... T> inline void unpack( Stream& s, std::multiset<T...>& value );
     template<typename Stream, typename T> inline void pack( Stream& s, const std::unordered_set<T>& value );
     template<typename Stream, typename T> inline void unpack( Stream& s, std::unordered_set<T>& value );
 
@@ -114,11 +117,14 @@ namespace fc {
     template<typename Stream, typename T, size_t N> inline void pack( Stream& s, const fc::array<T,N>& v);
     template<typename Stream, typename T, size_t N> inline void unpack( Stream& s, fc::array<T,N>& v);
 
+    template<typename Stream, typename T, size_t N> inline void pack( Stream& s, const fc::int_array<T,N>& v);
+    template<typename Stream, typename T, size_t N> inline void unpack( Stream& s, fc::int_array<T,N>& v);
+
     template<typename Stream> inline void pack( Stream& s, const bool& v );
     template<typename Stream> inline void unpack( Stream& s, bool& v );
 
-    template<typename T> inline std::vector<char> pack( const T& v );
-    template<typename T> inline T unpack( const std::vector<char>& s );
-    template<typename T> inline T unpack( const char* d, uint32_t s );
-    template<typename T> inline void unpack( const char* d, uint32_t s, T& v );
+    template<typename T> inline std::vector<char> pack_to_vector( const T& v );
+    template<typename T> inline T unpack_from_vector( const std::vector<char>& s );
+    template<typename T> inline T unpack_from_char_array( const char* d, uint32_t s );
+    template<typename T> inline void unpack_from_char_array( const char* d, uint32_t s, T& v );
 } }

@@ -4,6 +4,7 @@
 #include <amalgam/protocol/operations.hpp>
 #include <amalgam/protocol/amalgam_operations.hpp>
 
+#include <amalgam/chain/buffer_type.hpp>
 #include <amalgam/chain/amalgam_object_types.hpp>
 #include <amalgam/chain/witness_objects.hpp>
 
@@ -19,7 +20,7 @@ namespace amalgam { namespace chain {
       public:
          template< typename Constructor, typename Allocator >
          operation_object( Constructor&& c, allocator< Allocator > a )
-            :serialized_op( a.get_segment_manager() )
+            :serialized_op( a )
          {
             c( *this );
          }
@@ -33,6 +34,8 @@ namespace amalgam { namespace chain {
          uint64_t             virtual_op = 0;
          time_point_sec       timestamp;
          buffer_type          serialized_op;
+
+         uint64_t             get_virtual_op() const { return virtual_op; }
    };
 
    struct by_location;
@@ -102,3 +105,52 @@ CHAINBASE_SET_INDEX_TYPE( amalgam::chain::operation_object, amalgam::chain::oper
 
 FC_REFLECT( amalgam::chain::account_history_object, (id)(account)(sequence)(op) )
 CHAINBASE_SET_INDEX_TYPE( amalgam::chain::account_history_object, amalgam::chain::account_history_index )
+
+namespace helpers
+{
+   template <>
+   class index_statistic_provider<amalgam::chain::operation_index>
+   {
+   public:
+      typedef amalgam::chain::operation_index IndexType;
+
+      index_statistic_info gather_statistics(const IndexType& index, bool onlyStaticInfo) const
+      {
+         index_statistic_info info;
+         gather_index_static_data(index, &info);
+
+         if(onlyStaticInfo == false)
+         {
+            for(const auto& o : index)
+               info._item_additional_allocation +=
+                  o.serialized_op.capacity()*sizeof(amalgam::chain::buffer_type::value_type);
+         }
+
+         return info;
+      }
+   };
+
+   template <>
+   class index_statistic_provider<amalgam::chain::account_history_index>
+   {
+   public:
+      typedef amalgam::chain::account_history_index IndexType;
+
+      index_statistic_info gather_statistics(const IndexType& index, bool onlyStaticInfo) const
+      {
+         index_statistic_info info;
+         gather_index_static_data(index, &info);
+
+         if(onlyStaticInfo == false)
+         {
+            //for(const auto& o : index)
+            //   info._item_additional_allocation += o.get_ops().capacity()*
+            //      sizeof(amalgam::chain::account_history_object::operation_container::value_type);
+         }
+
+         return info;
+      }
+   };
+
+} /// namespace helpers
+

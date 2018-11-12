@@ -1,19 +1,20 @@
 #pragma once
 
-#include <amalgam/app/api.hpp>
-#include <amalgam/app/amalgam_api_objects.hpp>
+#include <amalgam/wallet/remote_node_api.hpp>
 
-#include <graphene/utilities/key_conversion.hpp>
+#include <amalgam/utilities/key_conversion.hpp>
 
+#include <fc/macros.hpp>
 #include <fc/real128.hpp>
 #include <fc/crypto/base58.hpp>
-
-using namespace amalgam::app;
-using namespace amalgam::chain;
-using namespace graphene::utilities;
-using namespace std;
+#include <fc/api.hpp>
 
 namespace amalgam { namespace wallet {
+
+using namespace std;
+
+using namespace amalgam::utilities;
+using namespace amalgam::protocol;
 
 typedef uint16_t transaction_handle_type;
 
@@ -23,7 +24,7 @@ struct memo_data {
       try {
          if( str.size() > sizeof(memo_data) && str[0] == '#') {
             auto data = fc::from_base58( str.substr(1) );
-            auto m  = fc::raw::unpack<memo_data>( data );
+            auto m  = fc::raw::unpack_from_vector<memo_data>( data );
             FC_ASSERT( string(m) == str );
             return m;
          }
@@ -38,7 +39,7 @@ struct memo_data {
    vector<char>    encrypted;
 
    operator string()const {
-      auto data = fc::raw::pack(*this);
+      auto data = fc::raw::pack_to_vector(*this);
       auto base58 = fc::to_base58( data );
       return '#'+base58;
    }
@@ -69,6 +70,13 @@ enum authority_type
    posting
 };
 
+enum withdraw_route_type
+{
+   incoming,
+   outgoing,
+   all
+};
+
 namespace detail {
 class wallet_api_impl;
 }
@@ -80,7 +88,7 @@ class wallet_api_impl;
 class wallet_api
 {
    public:
-      wallet_api( const wallet_data& initial_data, fc::api<login_api> rapi );
+      wallet_api( const wallet_data& initial_data, const amalgam::protocol::chain_id_type& _amalgam_chain_id, fc::api_connection& con );
       virtual ~wallet_api();
 
       bool copy_wallet_file( string destination_filename );
@@ -111,25 +119,25 @@ class wallet_api
        *
        * @returns Public block data on the blockchain
        */
-      optional<signed_block_api_obj>    get_block( uint32_t num );
+      optional< api_signed_block_object > get_block( uint32_t num );
 
       /** Returns sequence of operations included/generated in a specified block
        *
        * @param block_num Block height of specified block
        * @param only_virtual Whether to only return virtual operations
        */
-      vector<applied_operation>           get_ops_in_block( uint32_t block_num, bool only_virtual = true );
+      vector< api_operation_object > get_ops_in_block( uint32_t block_num, bool only_virtual = true );
 
       /** Return the current price feed history
        *
        * @returns Price feed history data on the blockchain
        */
-      feed_history_api_obj                 get_feed_history()const;
+      api_feed_history_object get_feed_history()const;
 
       /**
        * Returns the list of witnesses producing blocks in the current round (21 Blocks)
        */
-      vector<account_name_type>                      get_active_witnesses()const;
+      vector< account_name_type > get_active_witnesses()const;
 
       /**
        * Returns vesting withdraw routes for an account.
@@ -137,12 +145,12 @@ class wallet_api
        * @param account Account to query routes
        * @param type Withdraw type type [incoming, outgoing, all]
        */
-      vector< withdraw_route >            get_withdraw_routes( string account, withdraw_route_type type = all )const;
+      vector< api_withdraw_vesting_route_object > get_withdraw_routes( string account, withdraw_route_type type = all )const;
 
       /**
        *  Gets the account information for all accounts for which this wallet has a private key
        */
-      vector<account_api_obj>              list_my_accounts();
+      vector< api_account_object > list_my_accounts();
 
       /** Lists all accounts registered in the blockchain.
        * This returns a list of all account names and their account ids, sorted by account name.
@@ -156,22 +164,14 @@ class wallet_api
        * @param limit the maximum number of accounts to return (max: 1000)
        * @returns a list of accounts mapping account names to account ids
        */
-      set<string>  list_accounts(const string& lowerbound, uint32_t limit);
-
-      /** Returns the block chain's rapidly-changing properties.
-       * The returned object contains information that changes every block interval
-       * such as the head block number, the next witness, etc.
-       * @see \c get_global_properties() for less-frequently changing properties
-       * @returns the dynamic global properties
-       */
-      dynamic_global_property_api_obj    get_dynamic_global_properties() const;
+      vector< account_name_type > list_accounts(const string& lowerbound, uint32_t limit);
 
       /** Returns information about the given account.
        *
        * @param account_name the name of the account to provide information about
        * @returns the public account data stored in the blockchain
        */
-      account_api_obj                     get_account( string account_name ) const;
+      api_account_object get_account( string account_name ) const;
 
       /** Returns the current wallet filename.
        *
@@ -189,7 +189,10 @@ class wallet_api
       string                            get_private_key( public_key_type pubkey )const;
 
       /**
-       *  @param role - active | owner | posting | memo
+       *  @param account  - the name of the account to retrieve key for
+       *  @param role     - active | owner | posting | memo
+       *  @param password - the password to be used at key generation
+       *  @return public key corresponding to generated private key, and private key in WIF format.
        */
       pair<public_key_type,string>  get_private_key_from_password( string account, string role, string password )const;
 
@@ -197,7 +200,7 @@ class wallet_api
       /**
        * Returns transaction by ID.
        */
-      annotated_signed_transaction      get_transaction( transaction_id_type trx_id )const;
+      annotated_signed_transaction get_transaction( transaction_id_type trx_id )const;
 
       /** Checks whether the wallet has just been created and has not yet had a password set.
        *
@@ -289,7 +292,7 @@ class wallet_api
 
       /** Suggests a safe brain key to use for creating your account.
        * \c create_account_with_brain_key() requires you to specify a 'brain key',
-       * a long passphrase that provides enough entropy to generate cyrptographic
+       * a long passphrase that provides enough entropy to generate cryptographic
        * keys.  This function will suggest a suitably random string that should
        * be easy to write down (and, with effort, memorize).
        * @returns a suggested brain_key
@@ -353,14 +356,15 @@ class wallet_api
        * @param memo public memo key of the new account
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction create_account_with_keys( string creator,
-                                            string newname,
-                                            string json_meta,
-                                            public_key_type owner,
-                                            public_key_type active,
-                                            public_key_type posting,
-                                            public_key_type memo,
-                                            bool broadcast )const;
+      annotated_signed_transaction create_account_with_keys(
+         string creator,
+         string newname,
+         string json_meta,
+         public_key_type owner,
+         public_key_type active,
+         public_key_type posting,
+         public_key_type memo,
+         bool broadcast )const;
 
       /**
        * This method updates the keys of an existing account.
@@ -373,16 +377,17 @@ class wallet_api
        * @param memo New public memo key for the account
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction update_account( string accountname,
-                                         string json_meta,
-                                         public_key_type owner,
-                                         public_key_type active,
-                                         public_key_type posting,
-                                         public_key_type memo,
-                                         bool broadcast )const;
+      annotated_signed_transaction update_account(
+         string accountname,
+         string json_meta,
+         public_key_type owner,
+         public_key_type active,
+         public_key_type posting,
+         public_key_type memo,
+         bool broadcast )const;
 
       /**
-       * This method updates the key of an authority for an exisiting account.
+       * This method updates the key of an authority for an existing account.
        * Warning: You can create impossible authorities using this method. The method
        * will fail if you create an impossible owner authority, but will allow impossible
        * active and posting authorities.
@@ -393,10 +398,15 @@ class wallet_api
        * @param weight The weight the key should have in the authority. A weight of 0 indicates the removal of the key.
        * @param broadcast true if you wish to broadcast the transaction.
        */
-      annotated_signed_transaction update_account_auth_key( string account_name, authority_type type, public_key_type key, weight_type weight, bool broadcast );
+      annotated_signed_transaction update_account_auth_key(
+         string account_name,
+         authority_type type,
+         public_key_type key,
+         weight_type weight,
+         bool broadcast );
 
       /**
-       * This method updates the account of an authority for an exisiting account.
+       * This method updates the account of an authority for an existing account.
        * Warning: You can create impossible authorities using this method. The method
        * will fail if you create an impossible owner authority, but will allow impossible
        * active and posting authorities.
@@ -407,13 +417,18 @@ class wallet_api
        * @param weight The weight the account should have in the authority. A weight of 0 indicates the removal of the account.
        * @param broadcast true if you wish to broadcast the transaction.
        */
-      annotated_signed_transaction update_account_auth_account( string account_name, authority_type type, string auth_account, weight_type weight, bool broadcast );
+      annotated_signed_transaction update_account_auth_account(
+         string account_name,
+         authority_type type,
+         string auth_account,
+         weight_type weight,
+         bool broadcast );
 
       /**
        * This method updates the weight threshold of an authority for an account.
        * Warning: You can create impossible authorities using this method as well
        * as implicitly met authorities. The method will fail if you create an implicitly
-       * true authority and if you create an impossible owner authoroty, but will allow
+       * true authority and if you create an impossible owner authority, but will allow
        * impossible active and posting authorities.
        *
        * @param account_name The name of the account whose authority you wish to update
@@ -421,7 +436,11 @@ class wallet_api
        * @param threshold The weight threshold required for the authority to be met
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction update_account_auth_threshold( string account_name, authority_type type, uint32_t threshold, bool broadcast );
+      annotated_signed_transaction update_account_auth_threshold(
+         string account_name,
+         authority_type type,
+         uint32_t threshold,
+         bool broadcast );
 
       /**
        * This method updates the account JSON metadata
@@ -430,7 +449,10 @@ class wallet_api
        * @param json_meta The new JSON metadata for the account. This overrides existing metadata
        * @param broadcast ture if you wish to broadcast the transaction
        */
-      annotated_signed_transaction update_account_meta( string account_name, string json_meta, bool broadcast );
+      annotated_signed_transaction update_account_meta(
+         string account_name,
+         string json_meta,
+         bool broadcast );
 
       /**
        * This method updates the memo key of an account
@@ -439,7 +461,10 @@ class wallet_api
        * @param key The new memo public key
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction update_account_memo_key( string account_name, public_key_type key, bool broadcast );
+      annotated_signed_transaction update_account_memo_key(
+         string account_name,
+         public_key_type key,
+         bool broadcast );
 
 
       /**
@@ -450,7 +475,11 @@ class wallet_api
        * @param vesting_shares The amount of VESTS to delegate
        * @param broadcast true if you wish to broadcast the transaction
        */
-       annotated_signed_transaction delegate_vesting_shares( string delegator, string delegatee, asset vesting_shares, bool broadcast );
+       annotated_signed_transaction delegate_vesting_shares(
+          string delegator,
+          string delegatee,
+          asset vesting_shares,
+          bool broadcast );
 
 
       /**
@@ -462,22 +491,22 @@ class wallet_api
        * This returns a list of all account names that own witnesses, and the associated witness id,
        * sorted by name.  This lists witnesses whether they are currently voted in or not.
        *
-       * Use the \c lowerbound and limit parameters to page through the list.  To retrieve all witnesss,
+       * Use the \c lowerbound and limit parameters to page through the list.  To retrieve all witnesses,
        * start by setting \c lowerbound to the empty string \c "", and then each iteration, pass
-       * the last witness name returned as the \c lowerbound for the next \c list_witnesss() call.
+       * the last witness name returned as the \c lowerbound for the next \c list_witnesses() call.
        *
        * @param lowerbound the name of the first witness to return.  If the named witness does not exist,
        *                   the list will start at the witness that comes after \c lowerbound
-       * @param limit the maximum number of witnesss to return (max: 1000)
-       * @returns a list of witnesss mapping witness names to witness ids
+       * @param limit the maximum number of witnesses to return (max: 1000)
+       * @returns a list of witnesses mapping witness names to witness ids
        */
-      set<account_name_type>       list_witnesses(const string& lowerbound, uint32_t limit);
+      vector< account_name_type > list_witnesses(const string& lowerbound, uint32_t limit);
 
       /** Returns information about the given witness.
        * @param owner_account the name or id of the witness account owner, or the id of the witness
        * @returns the information about the witness stored in the block chain
        */
-      optional< witness_api_obj > get_witness(string owner_account);
+      optional< api_witness_object > get_witness(string owner_account);
 
       /** Returns conversion requests by an account
        *
@@ -485,7 +514,7 @@ class wallet_api
        *
        * @returns All pending conversion requests by account
        */
-      vector<convert_request_api_obj> get_conversion_requests( string owner );
+      vector< api_convert_request_object > get_conversion_requests( string owner );
 
 
       /**
@@ -497,11 +526,12 @@ class wallet_api
        * @param props The chain properties the witness is voting on.
        * @param broadcast true if you wish to broadcast the transaction.
        */
-      annotated_signed_transaction update_witness(string witness_name,
-                                        string url,
-                                        public_key_type block_signing_key,
-                                        const chain_properties& props,
-                                        bool broadcast = false);
+      annotated_signed_transaction update_witness(
+         string witness_name,
+         string url,
+         public_key_type block_signing_key,
+         const chain_properties& props,
+         bool broadcast = false);
 
       /** Set the voting proxy for an account.
        *
@@ -518,9 +548,10 @@ class wallet_api
        * @param proxy the name of account that should proxy to, or empty string to have no proxy
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction set_voting_proxy(string account_to_modify,
-                                          string proxy,
-                                          bool broadcast = false);
+      annotated_signed_transaction set_voting_proxy(
+         string account_to_modify,
+         string proxy,
+         bool broadcast = false);
 
       /**
        * Vote for a witness to become a block producer. By default an account has not voted
@@ -533,10 +564,11 @@ class wallet_api
        * @param approve true if the account is voting for the account to be able to be a block produce
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction vote_for_witness(string account_to_vote_with,
-                                          string witness_to_vote_for,
-                                          bool approve = true,
-                                          bool broadcast = false);
+      annotated_signed_transaction vote_for_witness(
+         string account_to_vote_with,
+         string witness_to_vote_for,
+         bool approve = true,
+         bool broadcast = false);
 
       /**
        * Transfer funds from one account to another. AMALGAM and ABD can be transferred.
@@ -544,10 +576,15 @@ class wallet_api
        * @param from The account the funds are coming from
        * @param to The account the funds are going to
        * @param amount The funds being transferred. i.e. "100.000 AML"
-       * @param memo A memo for the transactionm, encrypted with the to account's public memo key
+       * @param memo A memo for the transaction, encrypted with the to account's public memo key
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction transfer(string from, string to, asset amount, string memo, bool broadcast = false);
+      annotated_signed_transaction transfer(
+         string from,
+         string to,
+         asset amount,
+         string memo,
+         bool broadcast = false);
 
       /**
        * Transfer funds from one account to another using escrow. AMALGAM and ABD can be transferred.
@@ -651,27 +688,50 @@ class wallet_api
        *
        * @param from The account the AMALGAM is coming from
        * @param to The account getting the VESTS
-       * @param amount The amount of AMALGAM to vest i.e. "100.00 AML"
+       * @param amount The amount of AMALGAM to vest i.e. "100.000 AML"
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction transfer_to_vesting(string from, string to, asset amount, bool broadcast = false);
+      annotated_signed_transaction transfer_to_vesting(
+         string from,
+         string to,
+         asset amount,
+         bool broadcast = false);
 
       /**
        *  Transfers into savings happen immediately, transfers from savings take 72 hours
        */
-      annotated_signed_transaction transfer_to_savings( string from, string to, asset amount, string memo, bool broadcast = false );
+      annotated_signed_transaction transfer_to_savings(
+         string from,
+         string to,
+         asset amount,
+         string memo,
+         bool broadcast = false );
 
       /**
-       * @param request_id - an unique ID assigned by from account, the id is used to cancel the operation and can be reused after the transfer completes
+       *  @param from       - the account that initiated the transfer
+       *  @param request_id - an unique ID assigned by from account, the id is used to cancel the operation and can be reused after the transfer completes
+       *  @param to         - the account getting the transfer
+       *  @param amount     - the amount of assets to be transferred
+       *  @param memo A memo for the transaction, encrypted with the to account's public memo key
+       *  @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction transfer_from_savings( string from, uint32_t request_id, string to, asset amount, string memo, bool broadcast = false );
+      annotated_signed_transaction transfer_from_savings(
+         string from,
+         uint32_t request_id,
+         string to,
+         asset amount,
+         string memo,
+         bool broadcast = false );
 
       /**
-       *  @param request_id the id used in transfer_from_savings
        *  @param from the account that initiated the transfer
+       *  @param request_id the id used in transfer_from_savings
+       *  @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction cancel_transfer_from_savings( string from, uint32_t request_id, bool broadcast = false );
-
+      annotated_signed_transaction cancel_transfer_from_savings(
+         string from, uint32_t
+         request_id,
+         bool broadcast = false );
 
       /**
        * Set up a vesting withdraw request. The request is fulfilled once a week over the next two year (104 weeks).
@@ -681,7 +741,10 @@ class wallet_api
        *    withdrawn and deposited back as AMALGAM. i.e. "10.000000 AMLV"
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction withdraw_vesting( string from, asset vesting_shares, bool broadcast = false );
+      annotated_signed_transaction withdraw_vesting(
+         string from,
+         asset vesting_shares,
+         bool broadcast = false );
 
       /**
        * Set up a vesting withdraw route. When vesting shares are withdrawn, they will be routed to these accounts
@@ -689,13 +752,18 @@ class wallet_api
        *
        * @param from The account the VESTS are withdrawn from.
        * @param to   The account receiving either VESTS or AMALGAM.
-       * @param percent The percent of the withdraw to go to the 'to' account. This is denoted in hundreths of a percent.
+       * @param percent The percent of the withdraw to go to the 'to' account. This is denoted in hundredths of a percent.
        *    i.e. 100 is 1% and 10000 is 100%. This value must be between 1 and 100000
        * @param auto_vest Set to true if the from account should receive the VESTS as VESTS, or false if it should receive
        *    them as AMALGAM.
        * @param broadcast true if you wish to broadcast the transaction.
        */
-      annotated_signed_transaction set_withdraw_vesting_route( string from, string to, uint16_t percent, bool auto_vest, bool broadcast = false );
+      annotated_signed_transaction set_withdraw_vesting_route(
+         string from,
+         string to,
+         uint16_t percent,
+         bool auto_vest,
+         bool broadcast = false );
 
       /**
        *  This method will convert ABD to AMALGAM at the current_median_history price one
@@ -705,7 +773,10 @@ class wallet_api
        *  @param amount The amount of ABD to convert
        *  @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction convert_abd( string from, asset amount, bool broadcast = false );
+      annotated_signed_transaction convert_abd(
+         string from,
+         asset amount,
+         bool broadcast = false );
 
       /**
        * A witness can public a price feed for the AMALGAM:ABD market. The median price feed is used
@@ -715,7 +786,10 @@ class wallet_api
        * @param exchange_rate The desired exchange rate
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction publish_feed(string witness, price exchange_rate, bool broadcast );
+      annotated_signed_transaction publish_feed(
+         string witness,
+         price exchange_rate,
+         bool broadcast );
 
       /** Signs a transaction.
        *
@@ -725,7 +799,9 @@ class wallet_api
        * @param broadcast true if you wish to broadcast the transaction
        * @return the signed version of the transaction
        */
-      annotated_signed_transaction sign_transaction(signed_transaction tx, bool broadcast = false);
+      annotated_signed_transaction sign_transaction(
+         signed_transaction tx,
+         bool broadcast = false);
 
       /** Returns an uninitialized object representing a given blockchain operation.
        *
@@ -745,16 +821,13 @@ class wallet_api
        */
       operation get_prototype_operation(string operation_type);
 
-      void network_add_nodes( const vector<string>& nodes );
-      vector< variant > network_get_connected_peers();
-
       /**
        * Gets the current order book for AMALGAM:ABD
        *
        * @param limit Maximum number of orders to return for bids and asks. Max is 1000.
        */
-      order_book  get_order_book( uint32_t limit = 1000 );
-      vector<extended_limit_order>  get_open_orders( string accountname );
+      order_book get_order_book( uint32_t limit = 1000 );
+      vector< api_limit_order_object > get_open_orders( string accountname );
 
       /**
        *  Creates a limit order at the price amount_to_sell / min_to_receive and will deduct amount_to_sell from account
@@ -767,7 +840,14 @@ class wallet_api
        *  @param expiration the time the order should expire if it has not been filled
        *  @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction create_order( string owner, uint32_t order_id, asset amount_to_sell, asset min_to_receive, bool fill_or_kill, uint32_t expiration, bool broadcast );
+      annotated_signed_transaction create_order(
+         string owner,
+         uint32_t order_id,
+         asset amount_to_sell,
+         asset min_to_receive,
+         bool fill_or_kill,
+         uint32_t expiration,
+         bool broadcast );
 
       /**
        * Cancel an order created with create_order
@@ -776,7 +856,10 @@ class wallet_api
        * @param orderid The unique identifier assigned to the order by its creator
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction cancel_order( string owner, uint32_t orderid, bool broadcast );
+      annotated_signed_transaction cancel_order(
+         string owner,
+         uint32_t orderid,
+         bool broadcast );
 
       /**
        * Sets the amount of time in the future until a transaction expires.
@@ -794,7 +877,11 @@ class wallet_api
        * @param new_authority The new owner authority for the recovered account. This should be given to you by the holder of the compromised or lost account.
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction request_account_recovery( string recovery_account, string account_to_recover, authority new_authority, bool broadcast );
+      annotated_signed_transaction request_account_recovery(
+         string recovery_account,
+         string account_to_recover,
+         authority new_authority,
+         bool broadcast );
 
       /**
        * Recover your account using a recovery request created by your recovery account. The syntax for this commain contains a serialized
@@ -807,7 +894,11 @@ class wallet_api
        * @param new_authority The new authority that your recovery account used in the account recover request.
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction recover_account( string account_to_recover, authority recent_authority, authority new_authority, bool broadcast );
+      annotated_signed_transaction recover_account(
+         string account_to_recover,
+         authority recent_authority,
+         authority new_authority,
+         bool broadcast );
 
       /**
        * Change your recovery account after a 30 day delay.
@@ -816,9 +907,12 @@ class wallet_api
        * @param new_recovery_account The name of the recovery account you wish to have
        * @param broadcast true if you wish to broadcast the transaction
        */
-      annotated_signed_transaction change_recovery_account( string owner, string new_recovery_account, bool broadcast );
+      annotated_signed_transaction change_recovery_account(
+         string owner,
+         string new_recovery_account,
+         bool broadcast );
 
-      vector< owner_authority_history_api_obj > get_owner_history( string account )const;
+      vector< api_owner_authority_history_object > get_owner_history( string account )const;
 
       /**
        *  Account operations have sequence numbers from 0 to N where N is the most recent operation. This method
@@ -828,7 +922,7 @@ class wallet_api
        *  @param from - the absolute sequence number, -1 means most recent, limit is the number of operations before from.
        *  @param limit - the maximum number of items that can be queried (0 to 1000], must be less than from
        */
-      map<uint32_t,applied_operation> get_account_history( string account, uint32_t from, uint32_t limit );
+      map< uint32_t, api_operation_object > get_account_history( string account, uint64_t from, uint32_t limit );
 
       std::map<string,std::function<string(fc::variant,const fc::variants&)>> get_result_formatters() const;
 
@@ -839,7 +933,7 @@ class wallet_api
       /**
        * Checks memos against private keys on account and imported in wallet
        */
-      void check_memo( const string& memo, const account_api_obj& account )const;
+      void check_memo( const string& memo, const api_account_object& account )const;
 
       /**
        *  Returns the encrypted memo if memo starts with '#' otherwise returns memo
@@ -874,6 +968,8 @@ FC_REFLECT( amalgam::wallet::plain_keys, (checksum)(keys) )
 
 FC_REFLECT_ENUM( amalgam::wallet::authority_type, (owner)(active)(posting) )
 
+FC_REFLECT_ENUM( amalgam::wallet::withdraw_route_type, (incoming)(outgoing)(all) )
+        
 FC_API( amalgam::wallet::wallet_api,
         /// wallet api
         (help)(gethelp)
@@ -945,9 +1041,6 @@ FC_API( amalgam::wallet::wallet_api,
         (get_prototype_operation)
         (serialize_transaction)
         (sign_transaction)
-
-        (network_add_nodes)
-        (network_get_connected_peers)
 
         (get_active_witnesses)
         (get_transaction)

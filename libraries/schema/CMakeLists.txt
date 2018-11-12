@@ -1,13 +1,13 @@
-file(GLOB HEADERS "include/graphene/schema/*.hpp")
-add_library( graphene_schema schema.cpp ${HEADERS} )
-target_link_libraries( graphene_schema fc )
-target_include_directories( graphene_schema PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+file(GLOB HEADERS "include/amalgam/schema/*.hpp")
+add_library( amalgam_schema schema.cpp ${HEADERS} )
+target_link_libraries( amalgam_schema fc )
+target_include_directories( amalgam_schema PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 
 install( TARGETS
-   graphene_schema
+   amalgam_schema
 
    RUNTIME DESTINATION bin
    LIBRARY DESTINATION lib
    ARCHIVE DESTINATION lib
 )
-install( FILES ${HEADERS} DESTINATION "include/graphene/schema" )
+install( FILES ${HEADERS} DESTINATION "include/amalgam/schema" )

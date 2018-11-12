@@ -1,9 +1,9 @@
 
-#include <graphene/schema/schema.hpp>
+#include <amalgam/schema/schema.hpp>
 
 #include <set>
 
-namespace graphene { namespace schema {
+namespace amalgam { namespace schema {
 
 namespace detail {
 

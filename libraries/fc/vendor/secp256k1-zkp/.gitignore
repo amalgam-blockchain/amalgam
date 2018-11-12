@@ -23,11 +23,7 @@ config.status
 libtool
 .deps/
 .dirstamp
-!build-aux/
-build-aux/*
-!build-aux/m4/
-build-aux/m4/*
-!build-aux/m4/bitcoin_secp.m4
+build-aux/
 *.lo
 *.o
 *~

@@ -10,14 +10,20 @@ if( GPERFTOOLS_FOUND )
 endif()
 
 if( AMALGAM_STATIC_BUILD )
-   # I don't know why amalgam_app is required twice in the following line, I just know the linker breaks if it isn't.
    target_link_libraries( cli_wallet PRIVATE
                           "-static-libstdc++ -static-libgcc -lreadline"
-                          amalgam_app graphene_net amalgam_chain amalgam_protocol graphene_utilities amalgam_wallet amalgam_private_message amalgam_app amalgam_follow fc ${CMAKE_DL_LIBS} ${PLATFORM_SPECIFIC_LIBS} )
+                          graphene_net amalgam_chain amalgam_protocol amalgam_utilities amalgam_wallet database_api_plugin network_broadcast_api_plugin account_by_key_api_plugin market_history_api_plugin fc ${CMAKE_DL_LIBS} ${PLATFORM_SPECIFIC_LIBS} )
 else( AMALGAM_STATIC_BUILD )
    target_link_libraries( cli_wallet PRIVATE
-                          amalgam_app graphene_net amalgam_chain amalgam_protocol graphene_utilities amalgam_wallet amalgam_private_message amalgam_app amalgam_follow fc ${CMAKE_DL_LIBS} ${PLATFORM_SPECIFIC_LIBS} )
+                          graphene_net amalgam_chain amalgam_protocol amalgam_utilities amalgam_wallet database_api_plugin network_broadcast_api_plugin account_by_key_api_plugin market_history_api_plugin fc ${CMAKE_DL_LIBS} ${PLATFORM_SPECIFIC_LIBS} )
 endif( AMALGAM_STATIC_BUILD )
+
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      cli_wallet PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
 
 if(MSVC)
   set_source_files_properties( main.cpp PROPERTIES COMPILE_FLAGS "/bigobj" )

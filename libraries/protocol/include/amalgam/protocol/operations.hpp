@@ -44,6 +44,7 @@ namespace amalgam { namespace protocol {
             custom_binary_operation,
             decline_voting_rights_operation,
             delegate_vesting_shares_operation,
+            witness_set_properties_operation,
 
             tbd1_operation,
             tbd2_operation,
@@ -61,11 +62,11 @@ namespace amalgam { namespace protocol {
             interest_operation,
             fill_vesting_withdraw_operation,
             fill_order_operation,
-            shutdown_witness_operation,
             fill_transfer_from_savings_operation,
             hardfork_operation,
             return_vesting_delegation_operation,
-            producer_reward_operation
+            producer_reward_operation,
+            clear_null_account_balance_operation
          > operation;
 
    bool is_market_operation( const operation& op );
@@ -74,5 +75,5 @@ namespace amalgam { namespace protocol {
 
 } } // amalgam::protocol
 
-DECLARE_OPERATION_TYPE( amalgam::protocol::operation )
+AMALGAM_DECLARE_OPERATION_TYPE( amalgam::protocol::operation )
 FC_REFLECT_TYPENAME( amalgam::protocol::operation )

@@ -13,7 +13,6 @@
 #include <amalgam/chain/amalgam_objects.hpp>
 #include <amalgam/chain/transaction_object.hpp>
 #include <amalgam/chain/shared_db_merkle.hpp>
-#include <amalgam/chain/operation_notification.hpp>
 #include <amalgam/chain/witness_schedule.hpp>
 
 #include <fc/smart_ref_impl.hpp>
@@ -22,6 +21,8 @@
 #include <fc/container/deque.hpp>
 
 #include <fc/io/fstream.hpp>
+
+#include <boost/scope_exit.hpp>
 
 #include <cstdint>
 #include <deque>
@@ -80,69 +81,86 @@ database::~database()
    clear_pending();
 }
 
-void database::open( const fc::path& data_dir, const fc::path& shared_mem_dir, uint64_t initial_supply, uint64_t shared_file_size, uint32_t chainbase_flags )
+void database::open( const open_args& args )
 {
    try
    {
       init_schema();
-      chainbase::database::open( shared_mem_dir, chainbase_flags, shared_file_size );
+      chainbase::database::open( args.shared_mem_dir, args.chainbase_flags, args.shared_file_size );
 
       initialize_indexes();
       initialize_evaluators();
 
-      if( chainbase_flags & chainbase::database::read_write )
-      {
-         if( !find< dynamic_global_property_object >() )
-            with_write_lock( [&]()
-            {
-               init_genesis( initial_supply );
-            });
-
-         _block_log.open( data_dir / "block_log" );
-
-         auto log_head = _block_log.head();
-
-         // Rewind all undo state. This should return us to the state at the last irreversible block.
+      if( !find< dynamic_global_property_object >() )
          with_write_lock( [&]()
          {
-            undo_all();
-            FC_ASSERT( revision() == head_block_num(), "Chainbase revision does not match head block num",
-               ("rev", revision())("head_block", head_block_num()) );
-            validate_invariants();
+            init_genesis( args.initial_supply );
          });
 
-         if( head_block_num() )
-         {
-            auto head_block = _block_log.read_block_by_num( head_block_num() );
-            // This assertion should be caught and a reindex should occur
-            FC_ASSERT( head_block.valid() && head_block->id() == head_block_id(), "Chain state does not match block log. Please reindex blockchain." );
+      _benchmark_dumper.set_enabled( args.benchmark_is_enabled );
 
-            _fork_db.start_block( *head_block );
-         }
+      _block_log.open( args.data_dir / "block_log" );
+
+      auto log_head = _block_log.head();
+
+      // Rewind all undo state. This should return us to the state at the last irreversible block.
+      with_write_lock( [&]()
+      {
+         undo_all();
+         FC_ASSERT( revision() == head_block_num(), "Chainbase revision does not match head block num",
+            ("rev", revision())("head_block", head_block_num()) );
+         if (args.do_validate_invariants)
+            validate_invariants();
+      });
+
+      if( head_block_num() )
+      {
+         auto head_block = _block_log.read_block_by_num( head_block_num() );
+         // This assertion should be caught and a reindex should occur
+         FC_ASSERT( head_block.valid() && head_block->id() == head_block_id(), "Chain state does not match block log. Please reindex blockchain." );
+
+         _fork_db.start_block( *head_block );
       }
 
       with_read_lock( [&]()
       {
          init_hardforks(); // Writes to local state, but reads from db
       });
+
+      if (args.benchmark.first)
+      {
+         args.benchmark.second(0, get_abstract_index_cntr());
+         auto last_block_num = _block_log.head()->block_num();
+         args.benchmark.second(last_block_num, get_abstract_index_cntr());
+      }
+
+      _shared_file_full_threshold = args.shared_file_full_threshold;
+      _shared_file_scale_rate = args.shared_file_scale_rate;
    }
-   FC_CAPTURE_LOG_AND_RETHROW( (data_dir)(shared_mem_dir)(shared_file_size) )
+   FC_CAPTURE_LOG_AND_RETHROW( (args.data_dir)(args.shared_mem_dir)(args.shared_file_size) )
 }
 
-void database::reindex( const fc::path& data_dir, const fc::path& shared_mem_dir, uint64_t shared_file_size )
+uint32_t database::reindex( const open_args& args )
 {
+   reindex_notification note;
+
+   BOOST_SCOPE_EXIT(this_,&note) {
+      AMALGAM_TRY_NOTIFY(this_->_post_reindex_signal, note);
+   } BOOST_SCOPE_EXIT_END
+
    try
    {
+      AMALGAM_TRY_NOTIFY(_pre_reindex_signal, note);
+
       ilog( "Reindexing Blockchain" );
-      wipe( data_dir, shared_mem_dir, false );
-      open( data_dir, shared_mem_dir, AMALGAM_INIT_SUPPLY, shared_file_size, chainbase::database::read_write );
+      wipe( args.data_dir, args.shared_mem_dir, false );
+      open( args );
       _fork_db.reset();    // override effect of _fork_db.start_block() call in open()
 
       auto start = fc::time_point::now();
       AMALGAM_ASSERT( _block_log.head(), block_log_exception, "No blocks in block log. Cannot reindex an empty chain." );
 
       ilog( "Replaying blocks..." );
-
 
       uint64_t skip_flags =
          skip_witness_signature |
@@ -158,8 +176,15 @@ void database::reindex( const fc::path& data_dir, const fc::path& shared_mem_dir
 
       with_write_lock( [&]()
       {
+         _block_log.set_locking( false );
          auto itr = _block_log.read_block( 0 );
          auto last_block_num = _block_log.head()->block_num();
+         if( args.stop_replay_at > 0 && args.stop_replay_at < last_block_num )
+            last_block_num = args.stop_replay_at;
+         if( args.benchmark.first > 0 )
+         {
+            args.benchmark.second( 0, get_abstract_index_cntr() );
+         }
 
          while( itr.first.block_num() != last_block_num )
          {
@@ -168,11 +193,19 @@ void database::reindex( const fc::path& data_dir, const fc::path& shared_mem_dir
                std::cerr << "   " << double( cur_block_num * 100 ) / last_block_num << "%   " << cur_block_num << " of " << last_block_num <<
                "   (" << (get_free_memory() / (1024*1024)) << "M free)\n";
             apply_block( itr.first, skip_flags );
+
+            if( (args.benchmark.first > 0) && (cur_block_num % args.benchmark.first == 0) )
+               args.benchmark.second( cur_block_num, get_abstract_index_cntr() );
             itr = _block_log.read_block( itr.second );
          }
 
          apply_block( itr.first, skip_flags );
+         note.last_block_number = itr.first.block_num();
+
+         if( (args.benchmark.first > 0) && (note.last_block_number % args.benchmark.first == 0) )
+            args.benchmark.second( note.last_block_number, get_abstract_index_cntr() );
          set_revision( head_block_num() );
+         _block_log.set_locking( true );
       });
 
       if( _block_log.head()->block_num() )
@@ -180,8 +213,12 @@ void database::reindex( const fc::path& data_dir, const fc::path& shared_mem_dir
 
       auto end = fc::time_point::now();
       ilog( "Done reindexing, elapsed time: ${t} sec", ("t",double((end-start).count())/1000000.0 ) );
+
+      note.reindex_success = true;
+
+      return note.last_block_number;
    }
-   FC_CAPTURE_AND_RETHROW( (data_dir)(shared_mem_dir) )
+   FC_CAPTURE_AND_RETHROW( (args.data_dir)(args.shared_mem_dir) )
 
 }
 
@@ -291,10 +328,10 @@ optional<signed_block> database::fetch_block_by_id( const block_id_type& id )con
 optional<signed_block> database::fetch_block_by_number( uint32_t block_num )const
 { try {
    optional< signed_block > b;
+   shared_ptr< fork_item > fitem = _fork_db.fetch_block_on_main_branch_by_number( block_num );
 
-   auto results = _fork_db.fetch_block_by_number( block_num );
-   if( results.size() == 1 )
-      b = results[0]->data;
+   if( fitem )
+      b = fitem->data;
    else
       b = _block_log.read_block_by_num( block_num );
 
@@ -307,7 +344,7 @@ const signed_transaction database::get_recent_transaction( const transaction_id_
    auto itr = index.find(trx_id);
    FC_ASSERT(itr != index.end());
    signed_transaction trx;
-   fc::raw::unpack( itr->packed_trx, trx );
+   fc::raw::unpack_from_buffer( itr->packed_trx, trx );
    return trx;;
 } FC_CAPTURE_AND_RETHROW() }
 
@@ -409,15 +446,12 @@ const hardfork_property_object& database::get_hardfork_property_object()const
    return get< hardfork_property_object >();
 } FC_CAPTURE_AND_RETHROW() }
 
-void database::pay_fee( const account_object& account, asset fee )
+asset database::get_effective_vesting_shares( const account_object& account, asset_symbol_type vested_symbol )const
 {
-   FC_ASSERT( fee.amount >= 0 ); /// NOTE if this fails then validate() on some operation is probably wrong
-   if( fee.amount == 0 )
-      return;
+   if( vested_symbol == VESTS_SYMBOL )
+      return account.vesting_shares - account.delegated_vesting_shares + account.received_vesting_shares;
 
-   FC_ASSERT( account.balance >= fee );
-   adjust_balance( account, -fee );
-   adjust_supply( -fee );
+   FC_ASSERT( false, "Invalid symbol" );
 }
 
 uint32_t database::witness_participation_rate()const
@@ -447,19 +481,41 @@ bool database::push_block(const signed_block& new_block, uint32_t skip)
 {
    //fc::time_point begin_time = fc::time_point::now();
 
+   auto block_num = new_block.block_num();
+   if( _checkpoints.size() && _checkpoints.rbegin()->second != block_id_type() )
+   {
+      auto itr = _checkpoints.find( block_num );
+      if( itr != _checkpoints.end() )
+         FC_ASSERT( new_block.id() == itr->second, "Block did not match checkpoint", ("checkpoint",*itr)("block_id",new_block.id()) );
+
+      if( _checkpoints.rbegin()->first >= block_num )
+         skip = skip_witness_signature
+              | skip_transaction_signatures
+              | skip_transaction_dupe_check
+              /*| skip_fork_db Fork db cannot be skipped or else blocks will not be written out to block log */
+              | skip_block_size_check
+              | skip_tapos_check
+              | skip_authority_check
+              /* | skip_merkle_check While blockchain is being downloaded, txs need to be validated against block headers */
+              | skip_undo_history_check
+              | skip_witness_schedule_check
+              | skip_validate
+              | skip_validate_invariants
+              ;
+   }
+
    bool result;
    detail::with_skip_flags( *this, skip, [&]()
    {
-      with_write_lock( [&]()
+      detail::without_pending_transactions( *this, std::move(_pending_tx), [&]()
       {
-         detail::without_pending_transactions( *this, std::move(_pending_tx), [&]()
+         try
          {
-            try
-            {
-               result = _push_block(new_block);
-            }
-            FC_CAPTURE_AND_RETHROW( (new_block) )
-         });
+            result = _push_block(new_block);
+         }
+         FC_CAPTURE_AND_RETHROW( (new_block) )
+
+         check_free_memory( false, new_block.block_num() );
       });
    });
 
@@ -503,7 +559,7 @@ bool database::_push_block(const signed_block& new_block)
          //Only switch forks if new_head is actually higher than head
          if( new_head->data.block_num() > head_block_num() )
          {
-            // wlog( "Switching to fork: ${id}", ("id",new_head->data.id()) );
+            wlog( "Switching to fork: ${id}", ("id",new_head->data.id()) );
             auto branches = _fork_db.fetch_branch_from(new_head->data.id(), head_block_id());
 
             // pop blocks until we hit the forked block
@@ -513,25 +569,25 @@ bool database::_push_block(const signed_block& new_block)
             // push all blocks on the new fork
             for( auto ritr = branches.first.rbegin(); ritr != branches.first.rend(); ++ritr )
             {
-                // ilog( "pushing blocks from fork ${n} ${id}", ("n",(*ritr)->data.block_num())("id",(*ritr)->data.id()) );
+                ilog( "pushing blocks from fork ${n} ${id}", ("n",(*ritr)->data.block_num())("id",(*ritr)->data.id()) );
                 optional<fc::exception> except;
                 try
                 {
-                   auto session = start_undo_session( true );
+                   _fork_db.set_head( *ritr );
+                   auto session = start_undo_session();
                    apply_block( (*ritr)->data, skip );
                    session.push();
                 }
                 catch ( const fc::exception& e ) { except = e; }
                 if( except )
                 {
-                   // wlog( "exception thrown while switching forks ${e}", ("e",except->to_detail_string() ) );
+                   wlog( "exception thrown while switching forks ${e}", ("e",except->to_detail_string() ) );
                    // remove the rest of branches.first from the fork_db, those blocks are invalid
                    while( ritr != branches.first.rend() )
                    {
                       _fork_db.remove( (*ritr)->data.id() );
                       ++ritr;
                    }
-                   _fork_db.set_head( branches.second.front() );
 
                    // pop all blocks from the bad fork
                    while( head_block_id() != branches.second.back()->data.previous )
@@ -540,7 +596,8 @@ bool database::_push_block(const signed_block& new_block)
                    // restore all blocks from the good fork
                    for( auto ritr = branches.second.rbegin(); ritr != branches.second.rend(); ++ritr )
                    {
-                      auto session = start_undo_session( true );
+                      _fork_db.set_head( *ritr );
+                      auto session = start_undo_session();
                       apply_block( (*ritr)->data, skip );
                       session.push();
                    }
@@ -556,7 +613,7 @@ bool database::_push_block(const signed_block& new_block)
 
    try
    {
-      auto session = start_undo_session( true );
+      auto session = start_undo_session();
       apply_block(new_block, skip);
       session.push();
    }
@@ -587,19 +644,19 @@ void database::push_transaction( const signed_transaction& trx, uint32_t skip )
       {
          FC_ASSERT( fc::raw::pack_size(trx) <= (get_dynamic_global_properties().maximum_block_size - 256) );
          set_producing( true );
+         set_pending_tx( true );
          detail::with_skip_flags( *this, skip,
             [&]()
             {
-               with_write_lock( [&]()
-               {
-                  _push_transaction( trx );
-               });
+               _push_transaction( trx );
             });
          set_producing( false );
+         set_pending_tx( false );
       }
       catch( ... )
       {
          set_producing( false );
+         set_pending_tx( false );
          throw;
       }
    }
@@ -611,23 +668,20 @@ void database::_push_transaction( const signed_transaction& trx )
    // If this is the first transaction pushed after applying a block, start a new undo session.
    // This allows us to quickly rewind to the clean state of the head block, in case a new block arrives.
    if( !_pending_tx_session.valid() )
-      _pending_tx_session = start_undo_session( true );
+      _pending_tx_session = start_undo_session();
 
    // Create a temporary undo session as a child of _pending_tx_session.
    // The temporary session will be discarded by the destructor if
    // _apply_transaction fails.  If we make it to merge(), we
    // apply the changes.
 
-   auto temp_session = start_undo_session( true );
+   auto temp_session = start_undo_session();
    _apply_transaction( trx );
    _pending_tx.push_back( trx );
 
    notify_changed_objects();
    // The transaction applied successfully. Merge its changes into the pending block session.
    temp_session.squash();
-
-   // notify anyone listening to pending transactions
-   notify_on_pending_transaction( trx );
 }
 
 signed_block database::generate_block(
@@ -667,82 +721,12 @@ signed_block database::_generate_block(
    if( !(skip & skip_witness_signature) )
       FC_ASSERT( witness_obj.signing_key == block_signing_private_key.get_public_key() );
 
-   static const size_t max_block_header_size = fc::raw::pack_size( signed_block_header() ) + 4;
-   auto maximum_block_size = get_dynamic_global_properties().maximum_block_size; //AMALGAM_MAX_BLOCK_SIZE;
-   size_t total_block_size = max_block_header_size;
-
    signed_block pending_block;
-
-   with_write_lock( [&]()
-   {
-      //
-      // The following code throws away existing pending_tx_session and
-      // rebuilds it by re-applying pending transactions.
-      //
-      // This rebuild is necessary because pending transactions' validity
-      // and semantics may have changed since they were received, because
-      // time-based semantics are evaluated based on the current block
-      // time.  These changes can only be reflected in the database when
-      // the value of the "when" variable is known, which means we need to
-      // re-apply pending transactions in this method.
-      //
-      _pending_tx_session.reset();
-      _pending_tx_session = start_undo_session( true );
-
-      uint64_t postponed_tx_count = 0;
-      // pop pending state (reset to head block state)
-      for( const signed_transaction& tx : _pending_tx )
-      {
-         // Only include transactions that have not expired yet for currently generating block,
-         // this should clear problem transactions and allow block production to continue
-
-         if( tx.expiration < when )
-            continue;
-
-         uint64_t new_total_size = total_block_size + fc::raw::pack_size( tx );
-
-         // postpone transaction if it would make block too big
-         if( new_total_size >= maximum_block_size )
-         {
-            postponed_tx_count++;
-            continue;
-         }
-
-         try
-         {
-            auto temp_session = start_undo_session( true );
-            _apply_transaction( tx );
-            temp_session.squash();
-
-            total_block_size += fc::raw::pack_size( tx );
-            pending_block.transactions.push_back( tx );
-         }
-         catch ( const fc::exception& e )
-         {
-            // Do nothing, transaction will not be re-applied
-            //wlog( "Transaction was not processed while generating block due to ${e}", ("e", e) );
-            //wlog( "The transaction was ${t}", ("t", tx) );
-         }
-      }
-      if( postponed_tx_count > 0 )
-      {
-         wlog( "Postponed ${n} transactions due to block size limit", ("n", postponed_tx_count) );
-      }
-
-      _pending_tx_session.reset();
-   });
-
-   // We have temporarily broken the invariant that
-   // _pending_tx_session is the result of applying _pending_tx, as
-   // _pending_tx now consists of the set of postponed transactions.
-   // However, the push_block() call below will re-create the
-   // _pending_tx_session.
 
    pending_block.previous = head_block_id();
    pending_block.timestamp = when;
-   pending_block.transaction_merkle_root = pending_block.calculate_merkle_root();
    pending_block.witness = witness_owner;
-   
+
    const auto& witness = get_witness( witness_owner );
 
    if( witness.running_version != AMALGAM_BLOCKCHAIN_VERSION )
@@ -750,21 +734,95 @@ signed_block database::_generate_block(
 
    const auto& hfp = get_hardfork_property_object();
 
-   if( hfp.current_hardfork_version < AMALGAM_BLOCKCHAIN_HARDFORK_VERSION // Binary is newer hardfork than has been applied
+   if( hfp.current_hardfork_version < AMALGAM_BLOCKCHAIN_VERSION // Binary is newer hardfork than has been applied
       && ( witness.hardfork_version_vote != _hardfork_versions[ hfp.last_hardfork + 1 ] || witness.hardfork_time_vote != _hardfork_times[ hfp.last_hardfork + 1 ] ) ) // Witness vote does not match binary configuration
    {
       // Make vote match binary configuration
       pending_block.extensions.insert( block_header_extensions( hardfork_version_vote( _hardfork_versions[ hfp.last_hardfork + 1 ], _hardfork_times[ hfp.last_hardfork + 1 ] ) ) );
    }
-   else if( hfp.current_hardfork_version == AMALGAM_BLOCKCHAIN_HARDFORK_VERSION // Binary does not know of a new hardfork
-      && witness.hardfork_version_vote > AMALGAM_BLOCKCHAIN_HARDFORK_VERSION ) // Voting for hardfork in the future, that we do not know of...
+   else if( hfp.current_hardfork_version == AMALGAM_BLOCKCHAIN_VERSION // Binary does not know of a new hardfork
+      && witness.hardfork_version_vote > AMALGAM_BLOCKCHAIN_VERSION ) // Voting for hardfork in the future, that we do not know of...
    {
       // Make vote match binary configuration. This is vote to not apply the new hardfork.
       pending_block.extensions.insert( block_header_extensions( hardfork_version_vote( _hardfork_versions[ hfp.last_hardfork ], _hardfork_times[ hfp.last_hardfork ] ) ) );
    }
 
+   // The 4 is for the max size of the transaction vector length
+   size_t total_block_size = fc::raw::pack_size( pending_block ) + 4;
+   auto maximum_block_size = get_dynamic_global_properties().maximum_block_size; //AMALGAM_MAX_BLOCK_SIZE;
+
+   //
+   // The following code throws away existing pending_tx_session and
+   // rebuilds it by re-applying pending transactions.
+   //
+   // This rebuild is necessary because pending transactions' validity
+   // and semantics may have changed since they were received, because
+   // time-based semantics are evaluated based on the current block
+   // time.  These changes can only be reflected in the database when
+   // the value of the "when" variable is known, which means we need to
+   // re-apply pending transactions in this method.
+   //
+   _pending_tx_session.reset();
+   _pending_tx_session = start_undo_session();
+
+   /// modify current witness so transaction evaluators can know who included the transaction
+   modify( get_dynamic_global_properties(), [&]( dynamic_global_property_object& dgp )
+   {
+      dgp.current_witness = scheduled_witness;
+   });
+
+   uint64_t postponed_tx_count = 0;
+   // pop pending state (reset to head block state)
+   for( const signed_transaction& tx : _pending_tx )
+   {
+      // Only include transactions that have not expired yet for currently generating block,
+      // this should clear problem transactions and allow block production to continue
+
+      if( tx.expiration < when )
+         continue;
+
+      uint64_t new_total_size = total_block_size + fc::raw::pack_size( tx );
+
+      // postpone transaction if it would make block too big
+      if( new_total_size >= maximum_block_size )
+      {
+         postponed_tx_count++;
+         continue;
+      }
+
+      try
+      {
+         auto temp_session = start_undo_session();
+         _apply_transaction( tx );
+         temp_session.squash();
+
+         total_block_size += fc::raw::pack_size( tx );
+         pending_block.transactions.push_back( tx );
+      }
+      catch ( const fc::exception& e )
+      {
+         // Do nothing, transaction will not be re-applied
+         //wlog( "Transaction was not processed while generating block due to ${e}", ("e", e) );
+         //wlog( "The transaction was ${t}", ("t", tx) );
+      }
+   }
+   if( postponed_tx_count > 0 )
+   {
+      wlog( "Postponed ${n} transactions due to block size limit", ("n", postponed_tx_count) );
+   }
+
+   _pending_tx_session.reset();
+
+   // We have temporarily broken the invariant that
+   // _pending_tx_session is the result of applying _pending_tx, as
+   // _pending_tx now consists of the set of postponed transactions.
+   // However, the push_block() call below will re-create the
+   // _pending_tx_session.
+
+   pending_block.transaction_merkle_root = pending_block.calculate_merkle_root();
+
    if( !(skip & skip_witness_signature) )
-      pending_block.sign( block_signing_private_key );
+      pending_block.sign( block_signing_private_key, fc::ecc::bip_0062 );
 
    // TODO:  Move this to _push_block() so session is restored.
    if( !(skip & skip_block_size_check) )
@@ -812,54 +870,66 @@ void database::clear_pending()
    FC_CAPTURE_AND_RETHROW()
 }
 
-void database::notify_pre_apply_operation( operation_notification& note )
+void database::push_virtual_operation( const operation& op )
 {
-   note.trx_id       = _current_trx_id;
-   note.block        = _current_block_num;
-   note.trx_in_block = _current_trx_in_block;
-   note.op_in_trx    = _current_op_in_trx;
-
-   AMALGAM_TRY_NOTIFY( pre_apply_operation, note )
-}
-
-void database::notify_post_apply_operation( const operation_notification& note )
-{
-   AMALGAM_TRY_NOTIFY( post_apply_operation, note )
-}
-
-inline const void database::push_virtual_operation( const operation& op, bool force )
-{
-   if( !force )
-   {
-      #if defined( IS_LOW_MEM ) && ! defined( IS_TEST_NET )
-      return;
-      #endif
-   }
-
    FC_ASSERT( is_virtual_operation( op ) );
-   operation_notification note(op);
+   operation_notification note = create_operation_notification( op );
+   ++_current_virtual_op;
+   note.virtual_op = _current_virtual_op;
    notify_pre_apply_operation( note );
    notify_post_apply_operation( note );
 }
 
-void database::notify_applied_block( const signed_block& block )
+void database::pre_push_virtual_operation( const operation& op )
 {
-   AMALGAM_TRY_NOTIFY( applied_block, block )
+   FC_ASSERT( is_virtual_operation( op ) );
+   operation_notification note = create_operation_notification( op );
+   ++_current_virtual_op;
+   note.virtual_op = _current_virtual_op;
+   notify_pre_apply_operation( note );
 }
 
-void database::notify_on_pending_transaction( const signed_transaction& tx )
+void database::post_push_virtual_operation( const operation& op )
 {
-   AMALGAM_TRY_NOTIFY( on_pending_transaction, tx )
+   FC_ASSERT( is_virtual_operation( op ) );
+   operation_notification note = create_operation_notification( op );
+   note.virtual_op = _current_virtual_op;
+   notify_post_apply_operation( note );
 }
 
-void database::notify_on_pre_apply_transaction( const signed_transaction& tx )
+void database::notify_pre_apply_operation( const operation_notification& note )
 {
-   AMALGAM_TRY_NOTIFY( on_pre_apply_transaction, tx )
+   AMALGAM_TRY_NOTIFY( _pre_apply_operation_signal, note )
 }
 
-void database::notify_on_applied_transaction( const signed_transaction& tx )
+void database::notify_post_apply_operation( const operation_notification& note )
 {
-   AMALGAM_TRY_NOTIFY( on_applied_transaction, tx )
+   AMALGAM_TRY_NOTIFY( _post_apply_operation_signal, note )
+}
+
+void database::notify_pre_apply_block( const block_notification& note )
+{
+   AMALGAM_TRY_NOTIFY( _pre_apply_block_signal, note )
+}
+
+void database::notify_irreversible_block( uint32_t block_num )
+{
+   AMALGAM_TRY_NOTIFY( _on_irreversible_block, block_num )
+}
+
+void database::notify_post_apply_block( const block_notification& note )
+{
+   AMALGAM_TRY_NOTIFY( _post_apply_block_signal, note )
+}
+
+void database::notify_pre_apply_transaction( const transaction_notification& note )
+{
+   AMALGAM_TRY_NOTIFY( _pre_apply_transaction_signal, note )
+}
+
+void database::notify_post_apply_transaction( const transaction_notification& note )
+{
+   AMALGAM_TRY_NOTIFY( _post_apply_transaction_signal, note )
 }
 
 account_name_type database::get_scheduled_witness( uint32_t slot_num )const
@@ -907,7 +977,7 @@ uint32_t database::get_slot_at_time(fc::time_point_sec when)const
  * @param to_account - the account to receive the new vesting shares
  * @param AMALGAM - AMALGAM to be converted to vesting shares
  */
-asset database::create_vesting( const account_object& to_account, asset amalgam )
+asset database::create_vesting( const account_object& to_account, asset amalgam, bool is_producer )
 {
    try
    {
@@ -924,14 +994,18 @@ asset database::create_vesting( const account_object& to_account, asset amalgam 
        *  If Cn equals o.amount, then we must solve for Vn to know how many new vesting shares
        *  the user should receive.
        *
-       *  128 bit math is requred due to multiplying of 64 bit numbers. This is done in asset and price.
+       *  128 bit math is required due to multiplying of 64 bit numbers. This is done in asset and price.
        */
       asset new_vesting = amalgam * cprops.get_vesting_share_price();
 
-      modify( to_account, [&]( account_object& to )
+      operation vop;
+      if ( is_producer )
       {
-         to.vesting_shares += new_vesting;
-      } );
+         vop = producer_reward_operation( to_account.name, new_vesting );
+         pre_push_virtual_operation( vop );
+      }
+      
+      adjust_balance( to_account, new_vesting );
 
       modify( cprops, [&]( dynamic_global_property_object& props )
       {
@@ -941,6 +1015,11 @@ asset database::create_vesting( const account_object& to_account, asset amalgam 
 
       adjust_proxied_witness_votes( to_account, new_vesting.amount );
 
+      if ( is_producer )
+      {
+         post_push_virtual_operation( vop );
+      }
+      
       return new_vesting;
    }
    FC_CAPTURE_AND_RETHROW( (to_account.name)(amalgam) )
@@ -1003,10 +1082,10 @@ void database::adjust_proxied_witness_votes( const account_object& a, share_type
 void database::adjust_witness_votes( const account_object& a, share_type delta )
 {
    const auto& vidx = get_index< witness_vote_index >().indices().get< by_account_witness >();
-   auto itr = vidx.lower_bound( boost::make_tuple( a.id, witness_id_type() ) );
-   while( itr != vidx.end() && itr->account == a.id )
+   auto itr = vidx.lower_bound( boost::make_tuple( a.name, account_name_type() ) );
+   while( itr != vidx.end() && itr->account == a.name )
    {
-      adjust_witness_vote( get(itr->witness), delta );
+      adjust_witness_vote( get< witness_object, by_name >(itr->witness), delta );
       ++itr;
    }
 }
@@ -1034,8 +1113,8 @@ void database::adjust_witness_vote( const witness_object& witness, share_type de
 void database::clear_witness_votes( const account_object& a )
 {
    const auto& vidx = get_index< witness_vote_index >().indices().get<by_account_witness>();
-   auto itr = vidx.lower_bound( boost::make_tuple( a.id, witness_id_type() ) );
-   while( itr != vidx.end() && itr->account == a.id )
+   auto itr = vidx.lower_bound( boost::make_tuple( a.name, account_name_type() ) );
+   while( itr != vidx.end() && itr->account == a.name )
    {
       const auto& current = *itr;
       ++itr;
@@ -1053,55 +1132,98 @@ void database::clear_null_account_balance()
    const auto& null_account = get_account( AMALGAM_NULL_ACCOUNT );
    asset total_amalgam( 0, AMALGAM_SYMBOL );
    asset total_abd( 0, ABD_SYMBOL );
+   asset total_vests( 0, VESTS_SYMBOL );
+
+   asset vesting_shares_amalgam_value = asset( 0, AMALGAM_SYMBOL );
 
    if( null_account.balance.amount > 0 )
    {
       total_amalgam += null_account.balance;
-      adjust_balance( null_account, -null_account.balance );
    }
 
    if( null_account.savings_balance.amount > 0 )
    {
       total_amalgam += null_account.savings_balance;
-      adjust_savings_balance( null_account, -null_account.savings_balance );
    }
 
    if( null_account.abd_balance.amount > 0 )
    {
       total_abd += null_account.abd_balance;
-      adjust_balance( null_account, -null_account.abd_balance );
    }
 
    if( null_account.savings_abd_balance.amount > 0 )
    {
       total_abd += null_account.savings_abd_balance;
+   }
+
+   if( null_account.vesting_shares.amount > 0 )
+   {
+      const auto& gpo = get_dynamic_global_properties();
+      vesting_shares_amalgam_value = null_account.vesting_shares * gpo.get_vesting_share_price();
+      total_amalgam += vesting_shares_amalgam_value;
+      total_vests += null_account.vesting_shares;
+   }
+
+   if( (total_amalgam.amount.value == 0) && (total_abd.amount.value == 0) && (total_vests.amount.value == 0) )
+      return;
+
+   operation vop_op = clear_null_account_balance_operation();
+   clear_null_account_balance_operation& vop = vop_op.get< clear_null_account_balance_operation >();
+   if( total_amalgam.amount.value > 0 )
+      vop.total_cleared.push_back( total_amalgam );
+   if( total_vests.amount.value > 0 )
+      vop.total_cleared.push_back( total_vests );
+   if( total_abd.amount.value > 0 )
+      vop.total_cleared.push_back( total_abd );
+   pre_push_virtual_operation( vop_op );
+
+   /////////////////////////////////////////////////////////////////////////////////////
+
+   if( null_account.balance.amount > 0 )
+   {
+      adjust_balance( null_account, -null_account.balance );
+   }
+
+   if( null_account.savings_balance.amount > 0 )
+   {
+      adjust_savings_balance( null_account, -null_account.savings_balance );
+   }
+
+   if( null_account.abd_balance.amount > 0 )
+   {
+      adjust_balance( null_account, -null_account.abd_balance );
+   }
+
+   if( null_account.savings_abd_balance.amount > 0 )
+   {
       adjust_savings_balance( null_account, -null_account.savings_abd_balance );
    }
 
    if( null_account.vesting_shares.amount > 0 )
    {
       const auto& gpo = get_dynamic_global_properties();
-      auto converted_amalgam = null_account.vesting_shares * gpo.get_vesting_share_price();
 
       modify( gpo, [&]( dynamic_global_property_object& g )
       {
          g.total_vesting_shares -= null_account.vesting_shares;
-         g.total_vesting_fund_amalgam -= converted_amalgam;
+         g.total_vesting_fund_amalgam -= vesting_shares_amalgam_value;
       });
 
       modify( null_account, [&]( account_object& a )
       {
          a.vesting_shares.amount = 0;
       });
-
-      total_amalgam += converted_amalgam;
    }
+
+   //////////////////////////////////////////////////////////////
 
    if( total_amalgam.amount > 0 )
       adjust_supply( -total_amalgam );
 
    if( total_abd.amount > 0 )
       adjust_supply( -total_abd );
+
+   post_push_virtual_operation( vop_op );
 }
 
 void database::update_owner_authority( const account_object& account, const authority& owner_authority )
@@ -1125,8 +1247,8 @@ void database::update_owner_authority( const account_object& account, const auth
 
 void database::process_vesting_withdrawals()
 {
-   const auto& widx = get_index< account_index >().indices().get< by_next_vesting_withdrawal >();
-   const auto& didx = get_index< withdraw_vesting_route_index >().indices().get< by_withdraw_route >();
+   const auto& widx = get_index< account_index, by_next_vesting_withdrawal >();
+   const auto& didx = get_index< withdraw_vesting_route_index, by_withdraw_route >();
    auto current = widx.begin();
 
    const auto& cprops = get_dynamic_global_properties();
@@ -1153,8 +1275,8 @@ void database::process_vesting_withdrawals()
       asset total_amalgam_converted = asset( 0, AMALGAM_SYMBOL );
 
       // Do two passes, the first for vests, the second for amalgam. Try to maintain as much accuracy for vests as possible.
-      for( auto itr = didx.upper_bound( boost::make_tuple( from_account.id, account_id_type() ) );
-           itr != didx.end() && itr->from_account == from_account.id;
+      for( auto itr = didx.upper_bound( boost::make_tuple( from_account.name, account_name_type() ) );
+           itr != didx.end() && itr->from_account == from_account.name;
            ++itr )
       {
          if( itr->auto_vest )
@@ -1164,7 +1286,11 @@ void database::process_vesting_withdrawals()
 
             if( to_deposit > 0 )
             {
-               const auto& to_account = get(itr->to_account);
+               const auto& to_account = get< account_object, by_name >( itr->to_account );
+
+               operation vop = fill_vesting_withdraw_operation( from_account.name, to_account.name, asset( to_deposit, VESTS_SYMBOL ), asset( to_deposit, VESTS_SYMBOL ) );
+
+               pre_push_virtual_operation( vop );
 
                modify( to_account, [&]( account_object& a )
                {
@@ -1173,18 +1299,18 @@ void database::process_vesting_withdrawals()
 
                adjust_proxied_witness_votes( to_account, to_deposit );
 
-               push_virtual_operation( fill_vesting_withdraw_operation( from_account.name, to_account.name, asset( to_deposit, VESTS_SYMBOL ), asset( to_deposit, VESTS_SYMBOL ) ) );
+               post_push_virtual_operation( vop );
             }
          }
       }
 
-      for( auto itr = didx.upper_bound( boost::make_tuple( from_account.id, account_id_type() ) );
-           itr != didx.end() && itr->from_account == from_account.id;
+      for( auto itr = didx.upper_bound( boost::make_tuple( from_account.name, account_name_type() ) );
+           itr != didx.end() && itr->from_account == from_account.name;
            ++itr )
       {
          if( !itr->auto_vest )
          {
-            const auto& to_account = get(itr->to_account);
+            const auto& to_account = get< account_object, by_name >( itr->to_account );
 
             share_type to_deposit = ( ( fc::uint128_t ( to_withdraw.value ) * itr->percent ) / AMALGAM_100_PERCENT ).to_uint64();
             vests_deposited_as_amalgam += to_deposit;
@@ -1193,6 +1319,10 @@ void database::process_vesting_withdrawals()
 
             if( to_deposit > 0 )
             {
+               operation vop = fill_vesting_withdraw_operation( from_account.name, to_account.name, asset( to_deposit, VESTS_SYMBOL), converted_amalgam );
+
+               pre_push_virtual_operation( vop );
+
                modify( to_account, [&]( account_object& a )
                {
                   a.balance += converted_amalgam;
@@ -1204,7 +1334,7 @@ void database::process_vesting_withdrawals()
                   o.total_vesting_shares.amount -= to_deposit;
                });
 
-               push_virtual_operation( fill_vesting_withdraw_operation( from_account.name, to_account.name, asset( to_deposit, VESTS_SYMBOL), converted_amalgam ) );
+               post_push_virtual_operation( vop );
             }
          }
       }
@@ -1213,6 +1343,8 @@ void database::process_vesting_withdrawals()
       FC_ASSERT( to_convert >= 0, "Deposited more vests than were supposed to be withdrawn" );
 
       auto converted_amalgam = asset( to_convert, VESTS_SYMBOL ) * cprops.get_vesting_share_price();
+      operation vop = fill_vesting_withdraw_operation( from_account.name, from_account.name, asset( to_convert, VESTS_SYMBOL ), converted_amalgam );
+      pre_push_virtual_operation( vop );
 
       modify( from_account, [&]( account_object& a )
       {
@@ -1240,7 +1372,7 @@ void database::process_vesting_withdrawals()
       if( to_withdraw > 0 )
          adjust_proxied_witness_votes( from_account, -to_withdraw );
 
-      push_virtual_operation( fill_vesting_withdraw_operation( from_account.name, from_account.name, asset( to_withdraw, VESTS_SYMBOL ), converted_amalgam ) );
+      post_push_virtual_operation( vop );
    }
 }
 
@@ -1275,8 +1407,8 @@ void database::process_funds()
 
    if( cwit.schedule == witness_object::timeshare )
       witness_reward *= wso.timeshare_weight;
-   else if( cwit.schedule == witness_object::top )
-      witness_reward *= wso.top_weight;
+   else if( cwit.schedule == witness_object::elected )
+      witness_reward *= wso.elected_weight;
    else
       wlog( "Encountered unknown witness type for witness: ${w}", ("w", cwit.owner) );
 
@@ -1291,8 +1423,7 @@ void database::process_funds()
       p.virtual_supply           += asset( new_amalgam, AMALGAM_SYMBOL );
    });
 
-   const auto& producer_reward = create_vesting( get_account( cwit.owner ), asset( witness_reward, AMALGAM_SYMBOL ) );
-   push_virtual_operation( producer_reward_operation( cwit.owner, producer_reward ) );
+   create_vesting( get_account( cwit.owner ), asset( witness_reward, AMALGAM_SYMBOL ), true );
 }
 
 void database::process_savings_withdraws()
@@ -1336,15 +1467,14 @@ void database::process_conversions()
 
    while( itr != request_by_date.end() && itr->conversion_date <= now )
    {
-      const auto& user = get_account( itr->owner );
       auto amount_to_issue = itr->amount * fhistory.current_median_history;
 
-      adjust_balance( user, amount_to_issue );
+      adjust_balance( get_account( itr->owner ), amount_to_issue );
 
       net_abd   += itr->amount;
       net_amalgam += amount_to_issue;
 
-      push_virtual_operation( fill_convert_request_operation ( user.name, itr->requestid, itr->amount, amount_to_issue ) );
+      push_virtual_operation( fill_convert_request_operation ( itr->owner, itr->requestid, itr->amount, amount_to_issue ) );
 
       remove( *itr );
       itr = request_by_date.begin();
@@ -1424,7 +1554,7 @@ void database::process_decline_voting_rights()
 
    while( itr != request_idx.end() && itr->effective_date <= head_block_time() )
    {
-      const auto& account = get(itr->account);
+      const auto& account = get< account_object, by_name >( itr->account );
 
       /// remove all current votes
       std::array<share_type, AMALGAM_MAX_PROXY_RECURSION_DEPTH+1> delta;
@@ -1435,7 +1565,7 @@ void database::process_decline_voting_rights()
 
       clear_witness_votes( account );
 
-      modify( get(itr->account), [&]( account_object& a )
+      modify( account, [&]( account_object& a )
       {
          a.can_vote = false;
          a.proxy = AMALGAM_PROXY_TO_SELF_ACCOUNT;
@@ -1502,6 +1632,7 @@ void database::initialize_evaluators()
    _my->_evaluator_registry.register_evaluator< cancel_transfer_from_savings_evaluator   >();
    _my->_evaluator_registry.register_evaluator< decline_voting_rights_evaluator          >();
    _my->_evaluator_registry.register_evaluator< delegate_vesting_shares_evaluator        >();
+   _my->_evaluator_registry.register_evaluator< witness_set_properties_evaluator         >();
    _my->_evaluator_registry.register_evaluator< tbd1_evaluator                           >();
    _my->_evaluator_registry.register_evaluator< tbd2_evaluator                           >();
    _my->_evaluator_registry.register_evaluator< tbd3_evaluator                           >();
@@ -1628,7 +1759,7 @@ void database::init_genesis( uint64_t init_supply )
       {
          w.owner = AMALGAM_CREATOR_ACCOUNT;
          w.signing_key = creator_public_key;
-         w.schedule = witness_object::top;
+         w.schedule = witness_object::elected;
       } );
 
       create< account_object >( [&]( account_object& a )
@@ -1668,6 +1799,9 @@ void database::init_genesis( uint64_t init_supply )
          p.total_vesting_fund_amalgam = asset( AMALGAM_INIT_VESTING_FUND, AMALGAM_SYMBOL );
          p.total_vesting_shares = asset( AMALGAM_INIT_VESTING_SHARES, VESTS_SYMBOL );
          p.maximum_block_size = AMALGAM_MAX_BLOCK_SIZE;
+         p.delegation_return_period = AMALGAM_DELEGATION_RETURN_PERIOD;
+         p.abd_stop_percent = AMALGAM_ABD_STOP_PERCENT;
+         p.abd_start_percent = AMALGAM_ABD_START_PERCENT;
       } );
 
       // Nothing to do
@@ -1686,7 +1820,7 @@ void database::init_genesis( uint64_t init_supply )
       create< witness_schedule_object >( [&]( witness_schedule_object& wso )
       {
          wso.current_shuffled_witnesses[0] = AMALGAM_CREATOR_ACCOUNT;
-         wso.witness_pay_normalization_factor = wso.top_weight;
+         wso.witness_pay_normalization_factor = wso.elected_weight;
       } );
    }
    FC_CAPTURE_AND_RETHROW()
@@ -1697,7 +1831,7 @@ void database::validate_transaction( const signed_transaction& trx )
 {
    database::with_write_lock( [&]()
    {
-      auto session = start_undo_session( true );
+      auto session = start_undo_session();
       _apply_transaction( trx );
       session.undo();
    });
@@ -1724,29 +1858,6 @@ void database::apply_block( const signed_block& next_block, uint32_t skip )
 { try {
    //fc::time_point begin_time = fc::time_point::now();
 
-   auto block_num = next_block.block_num();
-   if( _checkpoints.size() && _checkpoints.rbegin()->second != block_id_type() )
-   {
-      auto itr = _checkpoints.find( block_num );
-      if( itr != _checkpoints.end() )
-         FC_ASSERT( next_block.id() == itr->second, "Block did not match checkpoint", ("checkpoint",*itr)("block_id",next_block.id()) );
-
-      if( _checkpoints.rbegin()->first >= block_num )
-         skip = skip_witness_signature
-              | skip_transaction_signatures
-              | skip_transaction_dupe_check
-              | skip_fork_db
-              | skip_block_size_check
-              | skip_tapos_check
-              | skip_authority_check
-              /* | skip_merkle_check While blockchain is being downloaded, txs need to be validated against block headers */
-              | skip_undo_history_check
-              | skip_witness_schedule_check
-              | skip_validate
-              | skip_validate_invariants
-              ;
-   }
-
    detail::with_skip_flags( *this, skip, [&]()
    {
       _apply_block( next_block );
@@ -1759,6 +1870,8 @@ void database::apply_block( const signed_block& next_block, uint32_t skip )
       validate_invariants();
    }
    FC_CAPTURE_AND_RETHROW( (next_block) );*/
+
+   auto block_num = next_block.block_num();
 
    //fc::time_point end_time = fc::time_point::now();
    //fc::microseconds dt = end_time - begin_time;
@@ -1789,34 +1902,103 @@ void database::apply_block( const signed_block& next_block, uint32_t skip )
       }
    }
 
-   show_free_memory( false );
-
 } FC_CAPTURE_AND_RETHROW( (next_block) ) }
 
-void database::show_free_memory( bool force )
+void database::check_free_memory( bool force_print, uint32_t current_block_num )
 {
-   uint32_t free_gb = uint32_t( get_free_memory() / (1024*1024*1024) );
-   if( force || (free_gb < _last_free_gb_printed) || (free_gb > _last_free_gb_printed+1) )
-   {
-      ilog( "Free memory is now ${n}G", ("n", free_gb) );
-      _last_free_gb_printed = free_gb;
-   }
+   uint64_t free_mem = get_free_memory();
+   uint64_t max_mem = get_max_memory();
 
-   if( free_gb == 0 )
+   if( BOOST_UNLIKELY( _shared_file_full_threshold != 0 && _shared_file_scale_rate != 0 && free_mem < ( ( uint128_t( AMALGAM_100_PERCENT - _shared_file_full_threshold ) * max_mem ) / AMALGAM_100_PERCENT ).to_uint64() ) )
    {
+      uint64_t new_max = ( uint128_t( max_mem * _shared_file_scale_rate ) / AMALGAM_100_PERCENT ).to_uint64() + max_mem;
+
+      wlog( "Memory is almost full, increasing to ${mem}M", ("mem", new_max / (1024*1024)) );
+
+      resize( new_max );
+
       uint32_t free_mb = uint32_t( get_free_memory() / (1024*1024) );
+      wlog( "Free memory is now ${free}M", ("free", free_mb) );
+      _last_free_gb_printed = free_mb / 1024;
+   }
+   else
+   {
+      uint32_t free_gb = uint32_t( free_mem / (1024*1024*1024) );
+      if( BOOST_UNLIKELY( force_print || (free_gb < _last_free_gb_printed) || (free_gb > _last_free_gb_printed+1) ) )
+      {
+         ilog( "Free memory is now ${n}G. Current block number: ${block}", ("n", free_gb)("block",current_block_num) );
+         _last_free_gb_printed = free_gb;
+      }
 
-      if( free_mb <= 100 && head_block_num() % 10 == 0 )
-         elog( "Free memory is now ${n}M. Increase shared file size immediately!" , ("n", free_mb) );
+      if( BOOST_UNLIKELY( free_gb == 0 ) )
+      {
+         uint32_t free_mb = uint32_t( free_mem / (1024*1024) );
+
+   #ifdef IS_TEST_NET
+      if( !disable_low_mem_warning )
+   #endif
+         if( free_mb <= 100 && head_block_num() % 10 == 0 )
+            elog( "Free memory is now ${n}M. Increase shared file size immediately!" , ("n", free_mb) );
+      }
    }
 }
 
 void database::_apply_block( const signed_block& next_block )
 { try {
-   uint32_t next_block_num = next_block.block_num();
-   //block_id_type next_block_id = next_block.id();
+   block_notification note( next_block );
+
+   notify_pre_apply_block( note );
+
+   const uint32_t next_block_num = note.block_num;
+
+   BOOST_SCOPE_EXIT( this_ )
+   {
+      this_->_currently_processing_block_id.reset();
+   } BOOST_SCOPE_EXIT_END
+   _currently_processing_block_id = note.block_id;
 
    uint32_t skip = get_node_properties().skip_flags;
+
+   _current_block_num    = next_block_num;
+   _current_trx_in_block = 0;
+   _current_virtual_op   = 0;
+
+   if( BOOST_UNLIKELY( next_block_num == 1 ) )
+   {
+      // For every existing before the head_block_time (genesis time), apply the hardfork
+      // This allows the test net to launch with past hardforks and apply the next harfork when running
+
+      uint32_t n;
+      for( n=0; n<AMALGAM_NUM_HARDFORKS; n++ )
+      {
+         if( _hardfork_times[n+1] > next_block.timestamp )
+            break;
+      }
+
+      if( n > 0 )
+      {
+         ilog( "Processing ${n} genesis hardforks", ("n", n) );
+         set_hardfork( n, true );
+
+         const hardfork_property_object& hardfork_state = get_hardfork_property_object();
+         FC_ASSERT( hardfork_state.current_hardfork_version == _hardfork_versions[n], "Unexpected genesis hardfork state" );
+
+         const auto& witness_idx = get_index<witness_index>().indices().get<by_id>();
+         vector<witness_id_type> wit_ids_to_update;
+         for( auto it=witness_idx.begin(); it!=witness_idx.end(); ++it )
+            wit_ids_to_update.push_back(it->id);
+
+         for( witness_id_type wit_id : wit_ids_to_update )
+         {
+            modify( get( wit_id ), [&]( witness_object& wit )
+            {
+               wit.running_version = _hardfork_versions[n];
+               wit.hardfork_version_vote = _hardfork_versions[n];
+               wit.hardfork_time_vote = _hardfork_times[n];
+            } );
+         }
+      }
+   }
 
    if( !( skip & skip_merkle_check ) )
    {
@@ -1838,12 +2020,9 @@ void database::_apply_block( const signed_block& next_block )
 
    const witness_object& signing_witness = validate_block_header(skip, next_block);
 
-   _current_block_num    = next_block_num;
-   _current_trx_in_block = 0;
-
    const auto& gprops = get_dynamic_global_properties();
    auto block_size = fc::raw::pack_size( next_block );
-   FC_ASSERT( block_size <= gprops.maximum_block_size, "Block Size is too Big", ("next_block_num",next_block_num)("block_size", block_size)("max",gprops.maximum_block_size) );
+   FC_ASSERT( block_size <= gprops.maximum_block_size, "Block Size is too big", ("next_block_num",next_block_num)("block_size", block_size)("max",gprops.maximum_block_size) );
 
    if( block_size < AMALGAM_MIN_BLOCK_SIZE )
    {
@@ -1852,7 +2031,8 @@ void database::_apply_block( const signed_block& next_block )
       );
    }
 
-   /// modify current witness so transaction evaluators can know who included the transaction
+   /// modify current witness so transaction evaluators can know who included the transaction,
+   /// this is mostly for POW operations which must pay the current_witness
    modify( gprops, [&]( dynamic_global_property_object& dgp ){
       dgp.current_witness = next_block.witness;
    });
@@ -1878,6 +2058,10 @@ void database::_apply_block( const signed_block& next_block )
       apply_transaction( trx, skip );
       ++_current_trx_in_block;
    }
+
+   _current_trx_in_block = -1;
+   _current_op_in_trx = 0;
+   _current_virtual_op = 0;
 
    update_global_dynamic_data(next_block);
    update_signing_witness(signing_witness, next_block);
@@ -1907,62 +2091,66 @@ void database::_apply_block( const signed_block& next_block )
    process_hardforks();
 
    // notify observers that the block has been applied
-   notify_applied_block( next_block );
+   notify_post_apply_block( note );
 
    notify_changed_objects();
-} //FC_CAPTURE_AND_RETHROW( (next_block.block_num()) )  }
-FC_CAPTURE_LOG_AND_RETHROW( (next_block.block_num()) )
-}
+
+   // This moves newly irreversible blocks from the fork db to the block log
+   // and commits irreversible state to the database. This should always be the
+   // last call of applying a block because it is the only thing that is not
+   // reversible.
+   migrate_irreversible_state();
+} FC_CAPTURE_LOG_AND_RETHROW( (next_block.block_num()) ) }
+
+struct process_header_visitor
+{
+   process_header_visitor( const std::string& witness, database& db ) : _witness( witness ), _db( db ) {}
+
+   typedef void result_type;
+
+   const std::string& _witness;
+   database& _db;
+
+   void operator()( const void_t& obj ) const
+   {
+      //Nothing to do.
+   }
+
+   void operator()( const version& reported_version ) const
+   {
+      const auto& signing_witness = _db.get_witness( _witness );
+      //idump( (next_block.witness)(signing_witness.running_version)(reported_version) );
+
+      if( reported_version != signing_witness.running_version )
+      {
+         _db.modify( signing_witness, [&]( witness_object& wo )
+         {
+            wo.running_version = reported_version;
+         });
+      }
+   }
+
+   void operator()( const hardfork_version_vote& hfv ) const
+   {
+      const auto& signing_witness = _db.get_witness( _witness );
+      //idump( (next_block.witness)(signing_witness.running_version)(hfv) );
+
+      if( hfv.hf_version != signing_witness.hardfork_version_vote || hfv.hf_time != signing_witness.hardfork_time_vote )
+         _db.modify( signing_witness, [&]( witness_object& wo )
+         {
+            wo.hardfork_version_vote = hfv.hf_version;
+            wo.hardfork_time_vote = hfv.hf_time;
+         });
+   }
+};
 
 void database::process_header_extensions( const signed_block& next_block )
 {
-   auto itr = next_block.extensions.begin();
+   process_header_visitor _v( next_block.witness, *this );
 
-   while( itr != next_block.extensions.end() )
-   {
-      switch( itr->which() )
-      {
-         case 0: // void_t
-            break;
-         case 1: // version
-         {
-            auto reported_version = itr->get< version >();
-            const auto& signing_witness = get_witness( next_block.witness );
-            //idump( (next_block.witness)(signing_witness.running_version)(reported_version) );
-
-            if( reported_version != signing_witness.running_version )
-            {
-               modify( signing_witness, [&]( witness_object& wo )
-               {
-                  wo.running_version = reported_version;
-               });
-            }
-            break;
-         }
-         case 2: // hardfork_version vote
-         {
-            auto hfv = itr->get< hardfork_version_vote >();
-            const auto& signing_witness = get_witness( next_block.witness );
-            //idump( (next_block.witness)(signing_witness.running_version)(hfv) );
-
-            if( hfv.hf_version != signing_witness.hardfork_version_vote || hfv.hf_time != signing_witness.hardfork_time_vote )
-               modify( signing_witness, [&]( witness_object& wo )
-               {
-                  wo.hardfork_version_vote = hfv.hf_version;
-                  wo.hardfork_time_vote = hfv.hf_time;
-               });
-
-            break;
-         }
-         default:
-            FC_ASSERT( false, "Unknown extension in block header" );
-      }
-
-      ++itr;
-   }
+   for( const auto& e : next_block.extensions )
+      e.visit( _v );
 }
-
-
 
 void database::update_median_feed() {
 try {
@@ -1997,8 +2185,9 @@ try {
 
          if( fho.price_history.size() )
          {
+            /// BW-TODO Why deque is used here ? Also why don't make copy of whole container ?
             std::deque< price > copy;
-            for( auto i : fho.price_history )
+            for( const auto& i : fho.price_history )
             {
                copy.push_back( i );
             }
@@ -2010,8 +2199,16 @@ try {
             if( skip_price_feed_limit_check )
                return;
 #endif
+            // This block limits the effective median price to force ABD to remain at or
+            // below 10% of the combined market cap of AMALGAM and ABD.
+            //
+            // For example, if we have 500 AMALGAM and 100 ABD, the price is limited to
+            // 900 ABD / 500 AMALGAM which works out to be $1.80.  At this price, 500 AMALGAM
+            // would be valued at 500 * $1.80 = $900.  100 ABD is by definition always $100,
+            // so the combined market cap is $900 + $100 = $1000.
+
             const auto& gpo = get_dynamic_global_properties();
-            price min_price( asset( 9 * gpo.current_abd_supply.amount, ABD_SYMBOL ), gpo.current_supply ); // This price limits ABD to 10% market cap
+            price min_price( asset( 9 * gpo.current_abd_supply.amount, ABD_SYMBOL ), gpo.current_supply );
 
             if( min_price > fho.current_median_history )
                fho.current_median_history = min_price;
@@ -2023,20 +2220,22 @@ try {
 void database::apply_transaction(const signed_transaction& trx, uint32_t skip)
 {
    detail::with_skip_flags( *this, skip, [&]() { _apply_transaction(trx); });
-   notify_on_applied_transaction( trx );
 }
 
 void database::_apply_transaction(const signed_transaction& trx)
 { try {
-   _current_trx_id = trx.id();
+   transaction_notification note(trx);
+   _current_trx_id = note.transaction_id;
+   const transaction_id_type& trx_id = note.transaction_id;
+   _current_virtual_op = 0;
+
    uint32_t skip = get_node_properties().skip_flags;
 
    if( !(skip&skip_validate) )   /* issue #505 explains why this skip_flag is disabled */
       trx.validate();
 
    auto& trx_idx = get_index<transaction_index>();
-   const chain_id_type& chain_id = AMALGAM_CHAIN_ID;
-   auto trx_id = trx.id();
+   const chain_id_type& chain_id = get_chain_id();
    // idump((trx_id)(skip&skip_transaction_dupe_check));
    FC_ASSERT( (skip & skip_transaction_dupe_check) ||
               trx_idx.indices().get<by_trx_id>().find(trx_id) == trx_idx.indices().get<by_trx_id>().end(),
@@ -2050,7 +2249,8 @@ void database::_apply_transaction(const signed_transaction& trx)
 
       try
       {
-         trx.verify_authority( chain_id, get_active, get_owner, get_posting, AMALGAM_MAX_SIG_CHECK_DEPTH );
+         trx.verify_authority( chain_id, get_active, get_owner, get_posting, AMALGAM_MAX_SIG_CHECK_DEPTH,
+            AMALGAM_MAX_AUTHORITY_MEMBERSHIP, AMALGAM_MAX_SIG_CHECK_ACCOUNTS, fc::ecc::bip_0062 );
       }
       catch( protocol::tx_missing_active_auth& e )
       {
@@ -2085,11 +2285,11 @@ void database::_apply_transaction(const signed_transaction& trx)
       create<transaction_object>([&](transaction_object& transaction) {
          transaction.trx_id = trx_id;
          transaction.expiration = trx.expiration;
-         fc::raw::pack( transaction.packed_trx, trx );
+         fc::raw::pack_to_buffer( transaction.packed_trx, trx );
       });
    }
 
-   notify_on_pre_apply_transaction( trx );
+   notify_pre_apply_transaction( note );
 
    //Finally process the operations
    _current_op_in_trx = 0;
@@ -2101,14 +2301,158 @@ void database::_apply_transaction(const signed_transaction& trx)
    }
    _current_trx_id = transaction_id_type();
 
+   notify_post_apply_transaction( note );
+
 } FC_CAPTURE_AND_RETHROW( (trx) ) }
 
 void database::apply_operation(const operation& op)
 {
-   operation_notification note(op);
+   operation_notification note = create_operation_notification( op );
    notify_pre_apply_operation( note );
+
+   if( _benchmark_dumper.is_enabled() )
+      _benchmark_dumper.begin();
+
    _my->_evaluator_registry.get_evaluator( op ).apply( op );
+
+   if( _benchmark_dumper.is_enabled() )
+      _benchmark_dumper.end< true/*APPLY_CONTEXT*/ >( _my->_evaluator_registry.get_evaluator( op ).get_name( op ) );
+
    notify_post_apply_operation( note );
+}
+
+
+template <typename TFunction> struct fcall {};
+
+template <typename TResult, typename... TArgs>
+struct fcall<TResult(TArgs...)>
+{
+   using TNotification = std::function<TResult(TArgs...)>;
+
+   fcall() = default;
+   fcall(const TNotification& func, util::advanced_benchmark_dumper& dumper,
+         const abstract_plugin& plugin, const std::string& item_name)
+         : _func(func), _benchmark_dumper(dumper)
+      {
+         _name = plugin.get_name() + item_name;
+      }
+
+   void operator () (TArgs&&... args)
+   {
+      if (_benchmark_dumper.is_enabled())
+         _benchmark_dumper.begin();
+
+      _func(std::forward<TArgs>(args)...);
+
+      if (_benchmark_dumper.is_enabled())
+         _benchmark_dumper.end(_name);
+   }
+
+private:
+   TNotification                    _func;
+   util::advanced_benchmark_dumper& _benchmark_dumper;
+   std::string                      _name;
+};
+
+template <typename TResult, typename... TArgs>
+struct fcall<std::function<TResult(TArgs...)>>
+   : public fcall<TResult(TArgs...)>
+{
+   typedef fcall<TResult(TArgs...)> TBase;
+   using TBase::TBase;
+};
+
+template <typename TSignal, typename TNotification>
+boost::signals2::connection database::connect_impl( TSignal& signal, const TNotification& func,
+   const abstract_plugin& plugin, int32_t group, const std::string& item_name )
+{
+   fcall<TNotification> fcall_wrapper(func,_benchmark_dumper,plugin,item_name);
+
+   return signal.connect(group, fcall_wrapper);
+}
+
+template< bool IS_PRE_OPERATION >
+boost::signals2::connection database::any_apply_operation_handler_impl( const apply_operation_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   auto complex_func = [this, func, &plugin]( const operation_notification& o )
+   {
+      std::string name;
+
+      if (_benchmark_dumper.is_enabled())
+      {
+         if( _my->_evaluator_registry.is_evaluator( o.op ) )
+            name = _benchmark_dumper.generate_desc< IS_PRE_OPERATION >( plugin.get_name(), _my->_evaluator_registry.get_evaluator( o.op ).get_name( o.op ) );
+         else
+            name = util::advanced_benchmark_dumper::get_virtual_operation_name();
+
+         _benchmark_dumper.begin();
+      }
+
+      func( o );
+
+      if (_benchmark_dumper.is_enabled())
+         _benchmark_dumper.end( name );
+   };
+
+   if( IS_PRE_OPERATION )
+      return _pre_apply_operation_signal.connect(group, complex_func);
+   else
+      return _post_apply_operation_signal.connect(group, complex_func);
+}
+
+boost::signals2::connection database::add_pre_apply_operation_handler( const apply_operation_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return any_apply_operation_handler_impl< true/*IS_PRE_OPERATION*/ >( func, plugin, group );
+}
+
+boost::signals2::connection database::add_post_apply_operation_handler( const apply_operation_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return any_apply_operation_handler_impl< false/*IS_PRE_OPERATION*/ >( func, plugin, group );
+}
+
+boost::signals2::connection database::add_pre_apply_transaction_handler( const apply_transaction_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_pre_apply_transaction_signal, func, plugin, group, "->transaction");
+}
+
+boost::signals2::connection database::add_post_apply_transaction_handler( const apply_transaction_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_post_apply_transaction_signal, func, plugin, group, "<-transaction");
+}
+
+boost::signals2::connection database::add_pre_apply_block_handler( const apply_block_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_pre_apply_block_signal, func, plugin, group, "->block");
+}
+
+boost::signals2::connection database::add_post_apply_block_handler( const apply_block_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_post_apply_block_signal, func, plugin, group, "<-block");
+}
+
+boost::signals2::connection database::add_irreversible_block_handler( const irreversible_block_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_on_irreversible_block, func, plugin, group, "<-irreversible");
+}
+
+boost::signals2::connection database::add_pre_reindex_handler(const reindex_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_pre_reindex_signal, func, plugin, group, "->reindex");
+}
+
+boost::signals2::connection database::add_post_reindex_handler(const reindex_handler_t& func,
+   const abstract_plugin& plugin, int32_t group )
+{
+   return connect_impl(_post_reindex_signal, func, plugin, group, "<-reindex");
 }
 
 const witness_object& database::validate_block_header( uint32_t skip, const signed_block& next_block )const
@@ -2118,7 +2462,7 @@ const witness_object& database::validate_block_header( uint32_t skip, const sign
    const witness_object& witness = get_witness( next_block.witness );
 
    if( !(skip&skip_witness_signature) )
-      FC_ASSERT( next_block.validate_signee( witness.signing_key ) );
+      FC_ASSERT( next_block.validate_signee( witness.signing_key, fc::ecc::bip_0062 ) );
 
    if( !(skip&skip_witness_schedule_check) )
    {
@@ -2161,11 +2505,6 @@ void database::update_global_dynamic_data( const signed_block& b )
             modify( witness_missed, [&]( witness_object& w )
             {
                w.total_missed++;
-               if( head_block_num() - w.last_confirmed_block_num  > AMALGAM_BLOCKS_PER_DAY )
-               {
-                  w.signing_key = public_key_type();
-                  push_virtual_operation( shutdown_witness_operation( w.owner ) );
-               }
             } );
          }
       }
@@ -2183,7 +2522,9 @@ void database::update_global_dynamic_data( const signed_block& b )
       }
 
       dgp.head_block_number = b.block_num();
-      dgp.head_block_id = b.id();
+      // Following FC_ASSERT should never fail, as _currently_processing_block_id is always set by caller
+      FC_ASSERT( _currently_processing_block_id.valid() );
+      dgp.head_block_id = *_currently_processing_block_id;
       dgp.time = b.timestamp;
       dgp.current_aslot += missed_blocks+1;
    } );
@@ -2212,12 +2553,12 @@ void database::update_virtual_supply()
          auto percent_abd = uint16_t( ( ( fc::uint128_t( ( dgp.current_abd_supply * get_feed_history().current_median_history ).amount.value ) * AMALGAM_100_PERCENT )
             / dgp.virtual_supply.amount.value ).to_uint64() );
 
-         if( percent_abd <= AMALGAM_ABD_START_PERCENT )
+         if( percent_abd <= dgp.abd_start_percent )
             dgp.abd_print_rate = AMALGAM_100_PERCENT;
-         else if( percent_abd >= AMALGAM_ABD_STOP_PERCENT )
+         else if( percent_abd >= dgp.abd_stop_percent )
             dgp.abd_print_rate = 0;
          else
-            dgp.abd_print_rate = ( ( AMALGAM_ABD_STOP_PERCENT - percent_abd ) * AMALGAM_100_PERCENT ) / ( AMALGAM_ABD_STOP_PERCENT - AMALGAM_ABD_START_PERCENT );
+            dgp.abd_print_rate = ( ( dgp.abd_stop_percent - percent_abd ) * AMALGAM_100_PERCENT ) / ( dgp.abd_stop_percent - dgp.abd_start_percent );
       }
    });
 } FC_CAPTURE_AND_RETHROW() }
@@ -2237,6 +2578,7 @@ void database::update_signing_witness(const witness_object& signing_witness, con
 void database::update_last_irreversible_block()
 { try {
    const dynamic_global_property_object& dpo = get_dynamic_global_properties();
+   auto old_last_irreversible = dpo.last_irreversible_block_num;
 
    const witness_schedule_object& wso = get_witness_schedule_object();
 
@@ -2269,33 +2611,66 @@ void database::update_last_irreversible_block()
       } );
    }
 
-   commit( dpo.last_irreversible_block_num );
-
-   if( !( get_node_properties().skip_flags & skip_block_log ) )
+   for( uint32_t i = old_last_irreversible; i <= dpo.last_irreversible_block_num; ++i )
    {
-      // output to block log based on new last irreverisible block num
-      const auto& tmp_head = _block_log.head();
-      uint64_t log_head_num = 0;
-
-      if( tmp_head )
-         log_head_num = tmp_head->block_num();
-
-      if( log_head_num < dpo.last_irreversible_block_num )
-      {
-         while( log_head_num < dpo.last_irreversible_block_num )
-         {
-            shared_ptr< fork_item > block = _fork_db.fetch_block_on_main_branch_by_number( log_head_num+1 );
-            FC_ASSERT( block, "Current fork in the fork database does not contain the last_irreversible_block" );
-            _block_log.append( block->data );
-            log_head_num++;
-         }
-
-         _block_log.flush();
-      }
+      notify_irreversible_block( i );
    }
-
-   _fork_db.set_max_size( dpo.head_block_number - dpo.last_irreversible_block_num + 1 );
 } FC_CAPTURE_AND_RETHROW() }
+
+void database::migrate_irreversible_state()
+{
+   // This method should happen atomically. We cannot prevent unclean shutdown in the middle
+   // of the call, but all side effects happen at the end to minimize the chance that state
+   // invariants will be violated.
+   try
+   {
+      const dynamic_global_property_object& dpo = get_dynamic_global_properties();
+
+      auto fork_head = _fork_db.head();
+      if( fork_head )
+      {
+         FC_ASSERT( fork_head->num == dpo.head_block_number, "Fork Head: ${f} Chain Head: ${c}", ("f",fork_head->num)("c", dpo.head_block_number) );
+      }
+
+      if( !( get_node_properties().skip_flags & skip_block_log ) )
+      {
+         // output to block log based on new last irreversible block num
+         const auto& tmp_head = _block_log.head();
+         uint64_t log_head_num = 0;
+         vector< item_ptr > blocks_to_write;
+
+         if( tmp_head )
+            log_head_num = tmp_head->block_num();
+
+         if( log_head_num < dpo.last_irreversible_block_num )
+         {
+            // Check for all blocks that we want to write out to the block log but don't write any
+            // unless we are certain they all exist in the fork db
+            while( log_head_num < dpo.last_irreversible_block_num )
+            {
+               item_ptr block_ptr = _fork_db.fetch_block_on_main_branch_by_number( log_head_num+1 );
+               FC_ASSERT( block_ptr, "Current fork in the fork database does not contain the last_irreversible_block" );
+               blocks_to_write.push_back( block_ptr );
+               log_head_num++;
+            }
+
+            for( auto block_itr = blocks_to_write.begin(); block_itr != blocks_to_write.end(); ++block_itr )
+            {
+               _block_log.append( block_itr->get()->data );
+            }
+
+            _block_log.flush();
+         }
+      }
+
+      // This deletes blocks from the fork db
+      _fork_db.set_max_size( dpo.head_block_number - dpo.last_irreversible_block_num + 1 );
+
+      // This deletes undo state
+      commit( dpo.last_irreversible_block_num );
+   }
+   FC_CAPTURE_AND_RETHROW()
+}
 
 
 bool database::apply_order( const limit_order_object& new_order_object )
@@ -2322,11 +2697,21 @@ bool database::apply_order( const limit_order_object& new_order_object )
 
 int database::match( const limit_order_object& new_order, const limit_order_object& old_order, const price& match_price )
 {
-   assert( new_order.sell_price.quote.symbol == old_order.sell_price.base.symbol );
-   assert( new_order.sell_price.base.symbol  == old_order.sell_price.quote.symbol );
-   assert( new_order.for_sale > 0 && old_order.for_sale > 0 );
-   assert( match_price.quote.symbol == new_order.sell_price.base.symbol );
-   assert( match_price.base.symbol == old_order.sell_price.base.symbol );
+   AMALGAM_ASSERT( new_order.sell_price.quote.symbol == old_order.sell_price.base.symbol,
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
+   AMALGAM_ASSERT( new_order.sell_price.base.symbol  == old_order.sell_price.quote.symbol,
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
+   AMALGAM_ASSERT( new_order.for_sale > 0 && old_order.for_sale > 0,
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
+   AMALGAM_ASSERT( match_price.quote.symbol == new_order.sell_price.base.symbol,
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
+   AMALGAM_ASSERT( match_price.base.symbol == old_order.sell_price.base.symbol,
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
 
    auto new_order_for_sale = new_order.amount_for_sale();
    auto old_order_for_sale = old_order.amount_for_sale();
@@ -2351,15 +2736,20 @@ int database::match( const limit_order_object& new_order, const limit_order_obje
    old_order_pays = new_order_receives;
    new_order_pays = old_order_receives;
 
-   assert( new_order_pays == new_order.amount_for_sale() ||
-           old_order_pays == old_order.amount_for_sale() );
+   AMALGAM_ASSERT( new_order_pays == new_order.amount_for_sale() ||
+                 old_order_pays == old_order.amount_for_sale(),
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
 
    push_virtual_operation( fill_order_operation( new_order.seller, new_order.orderid, new_order_pays, old_order.seller, old_order.orderid, old_order_pays ) );
 
    int result = 0;
    result |= fill_order( new_order, new_order_pays, new_order_receives );
    result |= fill_order( old_order, old_order_pays, old_order_receives ) << 1;
-   assert( result != 0 );
+
+   AMALGAM_ASSERT( result != 0,
+      order_match_exception, "error matching orders: ${new_order} ${old_order} ${match_price}",
+      ("new_order", new_order)("old_order", old_order)("match_price", match_price) );
    return result;
 }
 
@@ -2368,12 +2758,14 @@ bool database::fill_order( const limit_order_object& order, const asset& pays, c
 {
    try
    {
-      FC_ASSERT( order.amount_for_sale().symbol == pays.symbol );
-      FC_ASSERT( pays.symbol != receives.symbol );
+      AMALGAM_ASSERT( order.amount_for_sale().symbol == pays.symbol,
+         order_fill_exception, "error filling orders: ${order} ${pays} ${receives}",
+         ("order", order)("pays", pays)("receives", receives) );
+      AMALGAM_ASSERT( pays.symbol != receives.symbol,
+         order_fill_exception, "error filling orders: ${order} ${pays} ${receives}",
+         ("order", order)("pays", pays)("receives", receives) );
 
-      const account_object& seller = get_account( order.seller );
-
-      adjust_balance( seller, receives );
+      adjust_balance( get_account( order.seller ), receives );
 
       if( pays == order.amount_for_sale() )
       {
@@ -2382,6 +2774,10 @@ bool database::fill_order( const limit_order_object& order, const asset& pays, c
       }
       else
       {
+         AMALGAM_ASSERT( pays < order.amount_for_sale(),
+           order_fill_exception, "error filling orders: ${order} ${pays} ${receives}",
+           ("order", order)("pays", pays)("receives", receives) );
+
          modify( order, [&]( limit_order_object& b )
          {
             b.for_sale -= pays.amount;
@@ -2405,7 +2801,7 @@ bool database::fill_order( const limit_order_object& order, const asset& pays, c
 
 void database::cancel_order( const limit_order_object& order )
 {
-   adjust_balance( get_account(order.seller), order.amount_for_sale() );
+   adjust_balance( get_account( order.seller ), order.amount_for_sale() );
    remove(order);
 }
 
@@ -2439,12 +2835,15 @@ void database::clear_expired_delegations()
    auto itr = delegations_by_exp.begin();
    while( itr != delegations_by_exp.end() && itr->expiration < now )
    {
+      operation vop = return_vesting_delegation_operation( itr->delegator, itr->vesting_shares );
+      pre_push_virtual_operation( vop );
+
       modify( get_account( itr->delegator ), [&]( account_object& a )
       {
          a.delegated_vesting_shares -= itr->vesting_shares;
       });
 
-      push_virtual_operation( return_vesting_delegation_operation( itr->delegator, itr->vesting_shares ) );
+      post_push_virtual_operation( vop );
 
       remove( *itr );
       itr = delegations_by_exp.begin();
@@ -2459,6 +2858,7 @@ void database::adjust_balance( const account_object& a, const asset& delta )
       {
          case AMALGAM_SYMBOL:
             acnt.balance += delta;
+            FC_ASSERT( acnt.balance.amount.value >= 0, "Insufficient AMALGAM funds" );
             break;
          case ABD_SYMBOL:
             if( a.abd_seconds_last_update != head_block_time() )
@@ -2488,6 +2888,11 @@ void database::adjust_balance( const account_object& a, const asset& delta )
                }
             }
             acnt.abd_balance += delta;
+            FC_ASSERT( acnt.abd_balance.amount.value >= 0, "Insufficient ABD funds" );
+            break;
+         case VESTS_SYMBOL:
+            acnt.vesting_shares += delta;
+            FC_ASSERT( acnt.vesting_shares.amount.value >= 0, "Insufficient VESTS funds" );
             break;
          default:
             FC_ASSERT( false, "invalid symbol" );
@@ -2504,6 +2909,7 @@ void database::adjust_savings_balance( const account_object& a, const asset& del
       {
          case AMALGAM_SYMBOL:
             acnt.savings_balance += delta;
+            FC_ASSERT( acnt.savings_balance.amount.value >= 0, "Insufficient savings AMALGAM funds" );
             break;
          case ABD_SYMBOL:
             if( a.savings_abd_seconds_last_update != head_block_time() )
@@ -2533,6 +2939,7 @@ void database::adjust_savings_balance( const account_object& a, const asset& del
                }
             }
             acnt.savings_abd_balance += delta;
+            FC_ASSERT( acnt.savings_abd_balance.amount.value >= 0, "Insufficient savings ABD funds" );
             break;
          default:
             FC_ASSERT( !"invalid symbol" );
@@ -2553,13 +2960,13 @@ void database::adjust_supply( const asset& delta )
          {
             props.current_supply += delta;
             props.virtual_supply += delta;
-            assert( props.current_supply.amount.value >= 0 );
+            FC_ASSERT( props.current_supply.amount.value >= 0 );
             break;
          }
          case ABD_SYMBOL:
             props.current_abd_supply += delta;
             props.virtual_supply = props.current_abd_supply * get_feed_history().current_median_history + props.current_supply;
-            assert( props.current_abd_supply.amount.value >= 0 );
+            FC_ASSERT( props.current_abd_supply.amount.value >= 0 );
             break;
          default:
             FC_ASSERT( false, "invalid symbol" );
@@ -2605,6 +3012,7 @@ void database::init_hardforks()
    const auto& hardforks = get_hardfork_property_object();
    FC_ASSERT( hardforks.last_hardfork <= AMALGAM_NUM_HARDFORKS, "Chain knows of more hardforks than configuration", ("hardforks.last_hardfork",hardforks.last_hardfork)("AMALGAM_NUM_HARDFORKS",AMALGAM_NUM_HARDFORKS) );
    FC_ASSERT( _hardfork_versions[ hardforks.last_hardfork ] <= AMALGAM_BLOCKCHAIN_VERSION, "Blockchain version is older than last applied hardfork" );
+   FC_ASSERT( AMALGAM_BLOCKCHAIN_HARDFORK_VERSION >= AMALGAM_BLOCKCHAIN_VERSION );
    FC_ASSERT( AMALGAM_BLOCKCHAIN_HARDFORK_VERSION == _hardfork_versions[ AMALGAM_NUM_HARDFORKS ] );
 }
 
@@ -2654,6 +3062,9 @@ void database::apply_hardfork( uint32_t hardfork )
 {
    if( _log_hardforks )
       elog( "HARDFORK ${hf} at block ${b}", ("hf", hardfork)("b", head_block_num()) );
+   operation hardfork_vop = hardfork_operation( hardfork );
+
+   pre_push_virtual_operation( hardfork_vop );
 
    switch( hardfork )
    {
@@ -2673,11 +3084,11 @@ void database::apply_hardfork( uint32_t hardfork )
       FC_ASSERT( hfp.processed_hardforks[ hfp.last_hardfork ] == _hardfork_times[ hfp.last_hardfork ], "Hardfork processing failed sanity check..." );
    } );
 
-   push_virtual_operation( hardfork_operation( hardfork ), true );
+   post_push_virtual_operation( hardfork_vop );
 }
 
 /**
- * Verifies all supply invariantes check out
+ * Verifies all supply invariants check out
  */
 void database::validate_invariants()const
 {
@@ -2779,5 +3190,8 @@ void database::validate_invariants()const
    }
    FC_CAPTURE_LOG_AND_RETHROW( (head_block_num()) );
 }
+
+index_info::index_info() {}
+index_info::~index_info() {}
 
 } } //amalgam::chain

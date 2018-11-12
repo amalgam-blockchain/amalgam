@@ -9,6 +9,7 @@
 #include <amalgam/protocol/types.hpp>
 #include <amalgam/protocol/authority.hpp>
 
+#include <amalgam/chain/buffer_type.hpp>
 
 namespace amalgam { namespace chain {
 
@@ -27,13 +28,13 @@ using amalgam::protocol::chain_id_type;
 using amalgam::protocol::account_name_type;
 using amalgam::protocol::share_type;
 
-typedef bip::basic_string< char, std::char_traits< char >, allocator< char > > shared_string;
+using chainbase::shared_string;
+
 inline std::string to_string( const shared_string& str ) { return std::string( str.begin(), str.end() ); }
 inline void from_string( shared_string& out, const string& in ){ out.assign( in.begin(), in.end() ); }
 
-typedef bip::vector< char, allocator< char > > buffer_type;
-
 struct by_id;
+struct by_name;
 
 enum object_type
 {
@@ -157,39 +158,19 @@ namespace fc
       {
          s.read( (char*)&id._id, sizeof(id._id));
       }
+#ifndef ENABLE_STD_ALLOCATOR
+      template< typename T >
+      inline T unpack_from_vector( const amalgam::chain::buffer_type& s )
+      { try  {
+         T tmp;
+         if( s.size() ) {
+         datastream<const char*>  ds( s.data(), size_t(s.size()) );
+         fc::raw::unpack(ds,tmp);
+         }
+         return tmp;
+      } FC_RETHROW_EXCEPTIONS( warn, "error unpacking ${type}", ("type",fc::get_typename<T>::name() ) ) }
+#endif
    }
-
-   namespace raw
-   {
-      namespace bip = chainbase::bip;
-      using chainbase::allocator;
-
-      template< typename T > inline void pack( amalgam::chain::buffer_type& raw, const T& v )
-      {
-         auto size = pack_size( v );
-         raw.resize( size );
-         datastream< char* > ds( raw.data(), size );
-         pack( ds, v );
-      }
-
-      template< typename T > inline void unpack( const amalgam::chain::buffer_type& raw, T& v )
-      {
-         datastream< const char* > ds( raw.data(), raw.size() );
-         unpack( ds, v );
-      }
-
-      template< typename T > inline T unpack( const amalgam::chain::buffer_type& raw )
-      {
-         T v;
-         datastream< const char* > ds( raw.data(), raw.size() );
-         unpack( ds, v );
-         return v;
-      }
-   }
-}
-
-namespace fc {
-
 }
 
 FC_REFLECT_ENUM( amalgam::chain::object_type,
@@ -219,7 +200,8 @@ FC_REFLECT_ENUM( amalgam::chain::object_type,
                  (vesting_delegation_expiration_object_type)
                )
 
+#ifndef ENABLE_STD_ALLOCATOR
 FC_REFLECT_TYPENAME( amalgam::chain::shared_string )
-FC_REFLECT_TYPENAME( amalgam::chain::buffer_type )
+#endif
 
 FC_REFLECT_ENUM( amalgam::chain::bandwidth_type, (forum)(market) )

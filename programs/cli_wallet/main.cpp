@@ -36,9 +36,8 @@
 #include <fc/rpc/websocket_api.hpp>
 #include <fc/smart_ref_impl.hpp>
 
-#include <graphene/utilities/key_conversion.hpp>
+#include <amalgam/utilities/key_conversion.hpp>
 
-#include <amalgam/app/api.hpp>
 #include <amalgam/protocol/protocol.hpp>
 #include <amalgam/wallet/wallet.hpp>
 
@@ -58,12 +57,11 @@
 #endif
 
 
-using namespace graphene::utilities;
-using namespace amalgam::app;
+using namespace amalgam::utilities;
 using namespace amalgam::chain;
 using namespace amalgam::wallet;
 using namespace std;
-namespace bpo = boost::program_options;
+using namespace appbase::bpo;
 
 int main( int argc, char** argv )
 {
@@ -73,8 +71,6 @@ int main( int argc, char** argv )
          opts.add_options()
          ("help,h", "Print this help message and exit.")
          ("server-rpc-endpoint,s", bpo::value<string>()->implicit_value("ws://127.0.0.1:8090"), "Server websocket RPC endpoint")
-         ("server-rpc-user,u", bpo::value<string>(), "Server Username")
-         ("server-rpc-password,p", bpo::value<string>(), "Server Password")
          ("cert-authority,a", bpo::value<string>()->default_value("_default"), "Trusted CA bundle file for connecting to wss:// TLS server")
          ("rpc-endpoint,r", bpo::value<string>()->implicit_value("127.0.0.1:8091"), "Endpoint for wallet websocket RPC to listen on")
          ("rpc-tls-endpoint,t", bpo::value<string>()->implicit_value("127.0.0.1:8092"), "Endpoint for wallet websocket TLS RPC to listen on")
@@ -83,8 +79,10 @@ int main( int argc, char** argv )
          ("daemon,d", "Run the wallet in daemon mode" )
          ("rpc-http-allowip", bpo::value<vector<string>>()->multitoken(), "Allows only specified IPs to connect to the HTTP endpoint" )
          ("wallet-file,w", bpo::value<string>()->implicit_value("wallet.json"), "wallet to load")
-         ("chain-id", bpo::value<string>(), "chain ID to connect to");
-
+#ifdef IS_TEST_NET
+         ("chain-id", bpo::value< std::string >()->default_value( AMALGAM_CHAIN_ID ), "chain ID to connect to")
+#endif
+         ;
       vector<string> allowed_ips;
 
       bpo::variables_map options;
@@ -100,6 +98,24 @@ int main( int argc, char** argv )
          allowed_ips = options["rpc-http-allowip"].as<vector<string>>();
          wdump((allowed_ips));
       }
+
+      amalgam::protocol::chain_id_type _amalgam_chain_id;
+
+#ifdef IS_TEST_NET
+      if( options.count("chain-id") )
+      {
+         auto chain_id_str = options.at("chain-id").as< std::string >();
+
+         try
+         {
+            _amalgam_chain_id = chain_id_type( chain_id_str);
+         }
+         catch( fc::exception& )
+         {
+            FC_ASSERT( false, "Could not parse chain_id as hex string. Chain ID String: ${s}", ("s", chain_id_str) );
+         }
+      }
+#endif
 
       fc::path data_dir;
       fc::logging_config cfg;
@@ -145,22 +161,13 @@ int main( int argc, char** argv )
       // but allow CLI to override
       if( options.count("server-rpc-endpoint") )
          wdata.ws_server = options.at("server-rpc-endpoint").as<std::string>();
-      if( options.count("server-rpc-user") )
-         wdata.ws_user = options.at("server-rpc-user").as<std::string>();
-      if( options.count("server-rpc-password") )
-         wdata.ws_password = options.at("server-rpc-password").as<std::string>();
 
       fc::http::websocket_client client( options["cert-authority"].as<std::string>() );
       idump((wdata.ws_server));
       auto con  = client.connect( wdata.ws_server );
       auto apic = std::make_shared<fc::rpc::websocket_api_connection>(*con);
 
-      auto remote_api = apic->get_remote_api< login_api >(1);
-      edump((wdata.ws_user)(wdata.ws_password) );
-      // TODO:  Error message here
-      FC_ASSERT( remote_api->login( wdata.ws_user, wdata.ws_password ) );
-
-      auto wapiptr = std::make_shared<wallet_api>( wdata, remote_api );
+      auto wapiptr = std::make_shared<wallet_api>( wdata, _amalgam_chain_id, *apic );
       wapiptr->set_wallet_filename( wallet_file.generic_string() );
       wapiptr->load_wallet_file();
 

@@ -64,6 +64,9 @@ namespace graphene { namespace net {
       public:
          virtual ~node_delegate(){}
 
+
+         virtual amalgam::protocol::chain_id_type get_chain_id() const = 0;
+
          /**
           *  If delegate has the item, the network has no need to fetch it.
           */
@@ -194,7 +197,7 @@ namespace graphene { namespace net {
    {
       public:
         node(const std::string& user_agent);
-        ~node();
+        virtual ~node();
 
         void close();
 

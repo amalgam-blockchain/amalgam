@@ -19,9 +19,9 @@
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
 #define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1536019200))
-#define AMALGAM_CASHOUT_WINDOW_SECONDS          (60*60) /// 1 hr
 
 #define AMALGAM_MIN_ACCOUNT_CREATION_FEE          0
+#define AMALGAM_MAX_ACCOUNT_CREATION_FEE          int64_t(1000000000)
 
 #define AMALGAM_OWNER_AUTH_RECOVERY_PERIOD                  fc::seconds(60)
 #define AMALGAM_ACCOUNT_RECOVERY_REQUEST_EXPIRATION_PERIOD  fc::seconds(12)
@@ -41,9 +41,9 @@
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
 #define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1536019200))
-#define AMALGAM_CASHOUT_WINDOW_SECONDS          (60*60*24*7)  /// 7 days
 
-#define AMALGAM_MIN_ACCOUNT_CREATION_FEE           3000 // 3 AML
+#define AMALGAM_MIN_ACCOUNT_CREATION_FEE          3000 // 3 AML
+#define AMALGAM_MAX_ACCOUNT_CREATION_FEE          int64_t(1000000000)
 
 #define AMALGAM_OWNER_AUTH_RECOVERY_PERIOD                  fc::days(30)
 #define AMALGAM_ACCOUNT_RECOVERY_REQUEST_EXPIRATION_PERIOD  fc::days(1)
@@ -89,8 +89,8 @@
 
 #define AMALGAM_MAX_RESERVE_RATIO               (20000)
 
-#define AMALGAM_ABD_STOP_PERCENT                (5*AMALGAM_1_PERCENT ) // Stop printing ABD at 5% Market Cap
-#define AMALGAM_ABD_START_PERCENT               (2*AMALGAM_1_PERCENT) // Start reducing printing of ABD at 2% Market Cap
+#define AMALGAM_ABD_STOP_PERCENT                (10*AMALGAM_1_PERCENT ) // Stop printing ABD at 10% Market Cap
+#define AMALGAM_ABD_START_PERCENT               (9*AMALGAM_1_PERCENT) // Start reducing printing of ABD at 9% Market Cap
 
 #define AMALGAM_MIN_ACCOUNT_NAME_LENGTH          3
 #define AMALGAM_MAX_ACCOUNT_NAME_LENGTH         16
@@ -99,7 +99,10 @@
 
 #define AMALGAM_INIT_SUPPLY                     int64_t(500000000000ll)
 #define AMALGAM_MAX_SHARE_SUPPLY                int64_t(1000000000000000ll)
+#define AMALGAM_MAX_SATOSHIS                    int64_t(4611686018427387903ll)
 #define AMALGAM_MAX_SIG_CHECK_DEPTH             2
+#define AMALGAM_MAX_SIG_CHECK_ACCOUNTS          125
+#define AMALGAM_MAX_AUTHORITY_MEMBERSHIP        40
 
 #define AMALGAM_INIT_VESTING_FUND               uint64_t(360000000000ll)
 #define AMALGAM_INIT_VESTING_SHARES             uint64_t(900000000000000000ll) // to set a vesting rate of 400 AML per MegaAMLV with about 2% interest
@@ -126,6 +129,9 @@
 
 #define AMALGAM_VIRTUAL_SCHEDULE_LAP_LENGTH ( fc::uint128::max_value() )
 
+#define AMALGAM_MAX_LIMIT_ORDER_EXPIRATION     (60*60*24*28) // 28 days
+#define AMALGAM_DELEGATION_RETURN_PERIOD       (5*60*60*24) // 5 days
+
 /**
  *  Reserved Account IDs with special meaning
  */
@@ -141,5 +147,5 @@
 /// Represents registrar account
 #define AMALGAM_REGISTRAR_ACCOUNT               "registrar"
 /// Represents reward fund account
-#define AMALGAM_REWARD_FUND_ACCOUNT             "reward_fund"
+#define AMALGAM_REWARD_FUND_ACCOUNT             "reward-fund"
 ///@}

@@ -34,4 +34,4 @@ bool is_virtual_operation( const operation& op )
 
 } } // amalgam::protocol
 
-DEFINE_OPERATION_TYPE( amalgam::protocol::operation )
+AMALGAM_DEFINE_OPERATION_TYPE( amalgam::protocol::operation )

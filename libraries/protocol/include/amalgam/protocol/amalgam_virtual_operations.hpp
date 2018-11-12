@@ -40,14 +40,6 @@ namespace amalgam { namespace protocol {
       asset             deposited;
    };
 
-   struct shutdown_witness_operation : public virtual_operation
-   {
-      shutdown_witness_operation(){}
-      shutdown_witness_operation( const string& o ):owner(o) {}
-
-      account_name_type owner;
-   };
-
    struct fill_order_operation : public virtual_operation
    {
       fill_order_operation(){}
@@ -102,14 +94,19 @@ namespace amalgam { namespace protocol {
 
    };
 
+   struct clear_null_account_balance_operation : public virtual_operation
+   {
+      vector< asset >   total_cleared;
+   };
+
 } } //amalgam::protocol
 
 FC_REFLECT( amalgam::protocol::fill_convert_request_operation, (owner)(requestid)(amount_in)(amount_out) )
 FC_REFLECT( amalgam::protocol::interest_operation, (owner)(interest) )
 FC_REFLECT( amalgam::protocol::fill_vesting_withdraw_operation, (from_account)(to_account)(withdrawn)(deposited) )
-FC_REFLECT( amalgam::protocol::shutdown_witness_operation, (owner) )
 FC_REFLECT( amalgam::protocol::fill_order_operation, (current_owner)(current_orderid)(current_pays)(open_owner)(open_orderid)(open_pays) )
 FC_REFLECT( amalgam::protocol::fill_transfer_from_savings_operation, (from)(to)(amount)(request_id)(memo) )
 FC_REFLECT( amalgam::protocol::hardfork_operation, (hardfork_id) )
 FC_REFLECT( amalgam::protocol::return_vesting_delegation_operation, (account)(vesting_shares) )
 FC_REFLECT( amalgam::protocol::producer_reward_operation, (producer)(vesting_shares) )
+FC_REFLECT( amalgam::protocol::clear_null_account_balance_operation, (total_cleared) )

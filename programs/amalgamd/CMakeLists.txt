@@ -12,31 +12,28 @@ endif()
 if( AMALGAM_STATIC_BUILD )
    target_link_libraries( amalgamd PRIVATE
       "-static-libstdc++ -static-libgcc"
+      appbase
+      amalgam_utilities
       amalgam_plugins
-      amalgam_mf_plugins
-      amalgam_app
-      amalgam_witness
-      amalgam_account_history
-      amalgam_chain
-      amalgam_protocol
-      fc
       ${CMAKE_DL_LIBS}
       ${PLATFORM_SPECIFIC_LIBS}
    )
 else( AMALGAM_STATIC_BUILD )
    target_link_libraries( amalgamd PRIVATE
+      appbase
+      amalgam_utilities
       amalgam_plugins
-      amalgam_mf_plugins
-      amalgam_app
-      amalgam_witness
-      amalgam_account_history
-      amalgam_chain
-      amalgam_protocol
-      fc
       ${CMAKE_DL_LIBS}
       ${PLATFORM_SPECIFIC_LIBS}
    )
 endif( AMALGAM_STATIC_BUILD )
+
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      amalgamd PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
 
 install( TARGETS
    amalgamd

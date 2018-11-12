@@ -2,14 +2,20 @@
  * Copyright (c) 2015 Cryptonomex, Inc., and contributors.
  */
 #pragma once
-#include <amalgam/chain/global_property_object.hpp>
-#include <amalgam/chain/hardfork.hpp>
-#include <amalgam/chain/node_property_object.hpp>
-#include <amalgam/chain/fork_database.hpp>
 #include <amalgam/chain/block_log.hpp>
-#include <amalgam/chain/operation_notification.hpp>
+#include <amalgam/chain/fork_database.hpp>
+#include <amalgam/chain/global_property_object.hpp>
+#include <amalgam/chain/hardfork_property_object.hpp>
+#include <amalgam/chain/node_property_object.hpp>
+#include <amalgam/chain/notifications.hpp>
+
+#include <amalgam/chain/util/advanced_benchmark_dumper.hpp>
+#include <amalgam/chain/util/signal.hpp>
 
 #include <amalgam/protocol/protocol.hpp>
+#include <amalgam/protocol/hardfork.hpp>
+
+#include <appbase/plugin.hpp>
 
 #include <fc/signals.hpp>
 
@@ -25,9 +31,20 @@ namespace amalgam { namespace chain {
    using amalgam::protocol::asset;
    using amalgam::protocol::asset_symbol_type;
    using amalgam::protocol::price;
+   using abstract_plugin = appbase::abstract_plugin;
 
    class database_impl;
    class custom_operation_interpreter;
+
+   namespace util {
+      class advanced_benchmark_dumper;
+   }
+
+   struct reindex_notification
+   {
+      bool reindex_success = false;
+      uint32_t last_block_number = 0;
+   };
 
    /**
     *   @class database
@@ -41,7 +58,12 @@ namespace amalgam { namespace chain {
 
          bool is_producing()const { return _is_producing; }
          void set_producing( bool p ) { _is_producing = p;  }
+
+         bool is_pending_tx()const { return _is_pending_tx; }
+         void set_pending_tx( bool p ) { _is_pending_tx = p; }
+
          bool _is_producing = false;
+         bool _is_pending_tx = false;
 
          bool _log_hardforks = true;
 
@@ -64,6 +86,26 @@ namespace amalgam { namespace chain {
             skip_block_log              = 1 << 13  ///< used to skip block logging on reindex
          };
 
+         typedef std::function<void(uint32_t, const abstract_index_cntr_t&)> TBenchmarkMidReport;
+         typedef std::pair<uint32_t, TBenchmarkMidReport> TBenchmark;
+
+         struct open_args
+         {
+            fc::path data_dir;
+            fc::path shared_mem_dir;
+            uint64_t initial_supply = AMALGAM_INIT_SUPPLY;
+            uint64_t shared_file_size = 0;
+            uint16_t shared_file_full_threshold = 0;
+            uint16_t shared_file_scale_rate = 0;
+            uint32_t chainbase_flags = 0;
+            bool do_validate_invariants = false;
+            bool benchmark_is_enabled = false;
+
+            // The following fields are only used on reindexing
+            uint32_t stop_replay_at = 0;
+            TBenchmark benchmark = TBenchmark(0, []( uint32_t, const abstract_index_cntr_t& ){});
+         };
+
          /**
           * @brief Open a database, creating a new one if necessary
           *
@@ -72,15 +114,17 @@ namespace amalgam { namespace chain {
           *
           * @param data_dir Path to open or create database in
           */
-         void open( const fc::path& data_dir, const fc::path& shared_mem_dir, uint64_t initial_supply = AMALGAM_INIT_SUPPLY, uint64_t shared_file_size = 0, uint32_t chainbase_flags = 0 );
+         void open( const open_args& args );
 
          /**
-          * @brief Rebuild object graph from block history and open detabase
+          * @brief Rebuild object graph from block history and open database
           *
           * This method may be called after or instead of @ref database::open, and will rebuild the object graph by
           * replaying blockchain history. When this method exits successfully, the database will be open.
+          *
+          * @return the last replayed block number.
           */
-         void reindex( const fc::path& data_dir, const fc::path& shared_mem_dir, uint64_t shared_file_size = (1024l*1024l*1024l*8l) );
+         uint32_t reindex( const open_args& args );
 
          /**
           * @brief wipe Delete database from disk, and potentially the raw chain as well.
@@ -108,7 +152,6 @@ namespace amalgam { namespace chain {
 
          chain_id_type             get_chain_id()const;
 
-
          const witness_object&  get_witness(  const account_name_type& name )const;
          const witness_object*  find_witness( const account_name_type& name )const;
 
@@ -130,10 +173,7 @@ namespace amalgam { namespace chain {
          const witness_schedule_object&         get_witness_schedule_object()const;
          const hardfork_property_object&        get_hardfork_property_object()const;
 
-         /**
-          *  Deducts fee from the account and the share supply
-          */
-         void pay_fee( const account_object& a, asset fee );
+         asset get_effective_vesting_shares( const account_object& account, asset_symbol_type vested_symbol )const;
 
          void max_bandwidth_per_share()const;
 
@@ -168,64 +208,52 @@ namespace amalgam { namespace chain {
          void pop_block();
          void clear_pending();
 
+         void push_virtual_operation( const operation& op );
+         void pre_push_virtual_operation( const operation& op );
+         void post_push_virtual_operation( const operation& op );
+
          /**
           *  This method is used to track applied operations during the evaluation of a block, these
           *  operations should include any operation actually included in a transaction as well
           *  as any implied/virtual operations that resulted, such as filling an order.
           *  The applied operations are cleared after post_apply_operation.
           */
-         void notify_pre_apply_operation( operation_notification& note );
+         void notify_pre_apply_operation( const operation_notification& note );
          void notify_post_apply_operation( const operation_notification& note );
-         inline const void push_virtual_operation( const operation& op, bool force = false ); // vops are not needed for low mem. Force will push them on low mem.
-         void notify_applied_block( const signed_block& block );
-         void notify_on_pending_transaction( const signed_transaction& tx );
-         void notify_on_pre_apply_transaction( const signed_transaction& tx );
-         void notify_on_applied_transaction( const signed_transaction& tx );
+         void notify_pre_apply_block( const block_notification& note );
+         void notify_post_apply_block( const block_notification& note );
+         void notify_irreversible_block( uint32_t block_num );
+         void notify_pre_apply_transaction( const transaction_notification& note );
+         void notify_post_apply_transaction( const transaction_notification& note );
 
-         /**
-          *  This signal is emitted for plugins to process every operation after it has been fully applied.
-          */
-         fc::signal<void(const operation_notification&)> pre_apply_operation;
-         fc::signal<void(const operation_notification&)> post_apply_operation;
+         using apply_operation_handler_t = std::function< void(const operation_notification&) >;
+         using apply_transaction_handler_t = std::function< void(const transaction_notification&) >;
+         using apply_block_handler_t = std::function< void(const block_notification&) >;
+         using irreversible_block_handler_t = std::function< void(uint32_t) >;
+         using reindex_handler_t = std::function< void(const reindex_notification&) >;
 
-         /**
-          *  This signal is emitted after all operations and virtual operation for a
-          *  block have been applied but before the get_applied_operations() are cleared.
-          *
-          *  You may not yield from this callback because the blockchain is holding
-          *  the write lock and may be in an "inconstant state" until after it is
-          *  released.
-          */
-         fc::signal<void(const signed_block&)>           applied_block;
 
-         /**
-          * This signal is emitted any time a new transaction is added to the pending
-          * block state.
-          */
-         fc::signal<void(const signed_transaction&)>     on_pending_transaction;
+      private:
+         template <typename TSignal,
+                   typename TNotification = std::function<typename TSignal::signature_type>>
+         boost::signals2::connection connect_impl( TSignal& signal, const TNotification& func,
+            const abstract_plugin& plugin, int32_t group, const std::string& item_name = "" );
 
-         /**
-          * This signla is emitted any time a new transaction is about to be applied
-          * to the chain state.
-          */
-         fc::signal<void(const signed_transaction&)>     on_pre_apply_transaction;
+         template< bool IS_PRE_OPERATION >
+         boost::signals2::connection any_apply_operation_handler_impl( const apply_operation_handler_t& func,
+            const abstract_plugin& plugin, int32_t group );
 
-         /**
-          * This signal is emitted any time a new transaction has been applied to the
-          * chain state.
-          */
-         fc::signal<void(const signed_transaction&)>     on_applied_transaction;
+      public:
 
-         /**
-          *  Emitted After a block has been applied and committed.  The callback
-          *  should not yield and should execute quickly.
-          */
-         //fc::signal<void(const vector< graphene::db2::generic_id >&)> changed_objects;
-
-         /** this signal is emitted any time an object is removed and contains a
-          * pointer to the last value of every object that was removed.
-          */
-         //fc::signal<void(const vector<const object*>&)>  removed_objects;
+         boost::signals2::connection add_pre_apply_operation_handler       ( const apply_operation_handler_t&        func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_post_apply_operation_handler      ( const apply_operation_handler_t&        func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_pre_apply_transaction_handler     ( const apply_transaction_handler_t&      func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_post_apply_transaction_handler    ( const apply_transaction_handler_t&      func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_pre_apply_block_handler           ( const apply_block_handler_t&            func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_post_apply_block_handler          ( const apply_block_handler_t&            func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_irreversible_block_handler        ( const irreversible_block_handler_t&     func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_pre_reindex_handler               ( const reindex_handler_t&                func, const abstract_plugin& plugin, int32_t group = -1 );
+         boost::signals2::connection add_post_reindex_handler              ( const reindex_handler_t&                func, const abstract_plugin& plugin, int32_t group = -1 );
 
          //////////////////// db_witness_schedule.cpp ////////////////////
 
@@ -265,7 +293,7 @@ namespace amalgam { namespace chain {
           */
          uint32_t get_slot_at_time(fc::time_point_sec when)const;
 
-         asset create_vesting( const account_object& to_account, asset amalgam );
+         asset create_vesting( const account_object& to_account, asset amalgam, bool is_producer = false );
 
          void        adjust_balance( const account_object& a, const asset& delta );
          void        adjust_savings_balance( const account_object& a, const asset& delta );
@@ -354,14 +382,15 @@ namespace amalgam { namespace chain {
          const std::string& get_json_schema() const;
 
          void set_flush_interval( uint32_t flush_blocks );
-         void show_free_memory( bool force );
+         void check_free_memory( bool force_print, uint32_t current_block_num );
 
 #ifdef IS_TEST_NET
          bool skip_price_feed_limit_check = true;
          bool skip_transaction_delta_check = true;
+         bool disable_low_mem_warning = true;
 #endif
 
-   protected:
+      protected:
          //Mark pop_undo() as protected -- we do not want outside calling pop_undo(); it should call pop_block() instead
          //void pop_undo() { object_database::pop_undo(); }
          void notify_changed_objects();
@@ -387,6 +416,7 @@ namespace amalgam { namespace chain {
          void update_global_dynamic_data( const signed_block& b );
          void update_signing_witness(const witness_object& signing_witness, const signed_block& new_block);
          void update_last_irreversible_block();
+         void migrate_irreversible_state();
          void clear_expired_transactions();
          void clear_expired_orders();
          void clear_expired_delegations();
@@ -397,6 +427,16 @@ namespace amalgam { namespace chain {
          void apply_hardfork( uint32_t hardfork );
 
          ///@}
+
+         operation_notification create_operation_notification( const operation& op )const
+         {
+            operation_notification note(op);
+            note.trx_id       = _current_trx_id;
+            note.block        = _current_block_num;
+            note.trx_in_block = _current_trx_in_block;
+            note.op_in_trx    = _current_op_in_trx;
+            return note;
+         }
 
          std::unique_ptr< database_impl > _my;
 
@@ -410,13 +450,13 @@ namespace amalgam { namespace chain {
          template< typename MultiIndexType >
          friend void add_plugin_index( database& db );
 
-         fc::signal< void() >          _plugin_index_signal;
-
          transaction_id_type           _current_trx_id;
          uint32_t                      _current_block_num    = 0;
-         uint16_t                      _current_trx_in_block = 0;
+         int32_t                       _current_trx_in_block = 0;
          uint16_t                      _current_op_in_trx    = 0;
          uint16_t                      _current_virtual_op   = 0;
+
+         optional< block_id_type >     _currently_processing_block_id;
 
          flat_map<uint32_t,block_id_type>  _checkpoints;
 
@@ -427,8 +467,78 @@ namespace amalgam { namespace chain {
 
          uint32_t                      _last_free_gb_printed = 0;
 
+         uint16_t                      _shared_file_full_threshold = 0;
+         uint16_t                      _shared_file_scale_rate = 0;
+         
          flat_map< std::string, std::shared_ptr< custom_operation_interpreter > >   _custom_operation_interpreters;
          std::string                       _json_schema;
+         
+         util::advanced_benchmark_dumper  _benchmark_dumper;
+
+         fc::signal<void(const operation_notification&)>       _pre_apply_operation_signal;
+         /**
+          *  This signal is emitted for plugins to process every operation after it has been fully applied.
+          */
+         fc::signal<void(const operation_notification&)>       _post_apply_operation_signal;
+
+         /**
+          *  This signal is emitted when we start processing a block.
+          *
+          *  You may not yield from this callback because the blockchain is holding
+          *  the write lock and may be in an "inconstant state" until after it is
+          *  released.
+          */
+         fc::signal<void(const block_notification&)>           _pre_apply_block_signal;
+
+         fc::signal<void(uint32_t)>                            _on_irreversible_block;
+
+         /**
+          *  This signal is emitted after all operations and virtual operation for a
+          *  block have been applied but before the get_applied_operations() are cleared.
+          *
+          *  You may not yield from this callback because the blockchain is holding
+          *  the write lock and may be in an "inconstant state" until after it is
+          *  released.
+          */
+         fc::signal<void(const block_notification&)>           _post_apply_block_signal;
+
+         /**
+          * This signal is emitted any time a new transaction is about to be applied
+          * to the chain state.
+          */
+         fc::signal<void(const transaction_notification&)>     _pre_apply_transaction_signal;
+
+         /**
+          * This signal is emitted any time a new transaction has been applied to the
+          * chain state.
+          */
+         fc::signal<void(const transaction_notification&)>     _post_apply_transaction_signal;
+
+         /**
+          * Emitted when reindexing starts
+          */
+         fc::signal<void(const reindex_notification&)>         _pre_reindex_signal;
+
+         /**
+          * Emitted when reindexing finishes
+          */
+         fc::signal<void(const reindex_notification&)>         _post_reindex_signal;
+
+         /**
+          *  Emitted After a block has been applied and committed.  The callback
+          *  should not yield and should execute quickly.
+          */
+         //fc::signal<void(const vector< object_id_type >&)> changed_objects;
+
+         /** this signal is emitted any time an object is removed and contains a
+          * pointer to the last value of every object that was removed.
+          */
+         //fc::signal<void(const vector<const object*>&)>  removed_objects;
+
+         /**
+          * Internal signal to execute deferred registration of plugin indexes.
+          */
+         fc::signal<void()>                                    _plugin_index_signal;
    };
 
 } }

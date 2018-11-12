@@ -1,17 +1,23 @@
-file(GLOB HEADERS "include/amalgam/witness/*.hpp")
+file(GLOB HEADERS "include/amalgam/plugins/witness/*.hpp")
 
-add_library( amalgam_witness
+add_library( witness_plugin
              witness_plugin.cpp
-             witness_evaluators.cpp
-             witness_operations.cpp
+             ${HEADERS}
            )
 
-target_link_libraries( amalgam_witness amalgam_chain amalgam_protocol amalgam_app )
-target_include_directories( amalgam_witness
+target_link_libraries( witness_plugin p2p_plugin chain_plugin appbase amalgam_chain amalgam_utilities amalgam_utilities )
+target_include_directories( witness_plugin
                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      witness_plugin PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
+
 install( TARGETS
-   amalgam_witness
+   witness_plugin
 
    RUNTIME DESTINATION bin
    LIBRARY DESTINATION lib

@@ -14,6 +14,7 @@ namespace amalgam { namespace chain {
    using amalgam::protocol::asset;
    using amalgam::protocol::price;
    using amalgam::protocol::asset_symbol_type;
+   using chainbase::t_deque;
 
    /**
     *  This object is used to track pending requests to convert abd to amalgam
@@ -101,7 +102,7 @@ namespace amalgam { namespace chain {
       public:
          template< typename Constructor, typename Allocator >
          feed_history_object( Constructor&& c, allocator< Allocator > a )
-            :price_history( a.get_segment_manager() )
+            :price_history( a )
          {
             c( *this );
          }
@@ -109,7 +110,10 @@ namespace amalgam { namespace chain {
          id_type                                   id;
 
          price                                     current_median_history; ///< the current median of the price history, used as the base for convert operations
-         bip::deque< price, allocator< price > >   price_history; ///< tracks this last week of median_feed one per hour
+
+         using t_price_history = t_deque< price >;
+
+         t_deque< price >   price_history; ///< tracks this last week of median_feed one per hour
    };
 
 
@@ -169,8 +173,8 @@ namespace amalgam { namespace chain {
 
          id_type  id;
 
-         account_id_type   from_account;
-         account_id_type   to_account;
+         account_name_type from_account;
+         account_name_type to_account;
          uint16_t          percent = 0;
          bool              auto_vest = false;
    };
@@ -189,16 +193,8 @@ namespace amalgam { namespace chain {
 
          id_type           id;
 
-         account_id_type   account;
+         account_name_type account;
          time_point_sec    effective_date;
-   };
-
-   enum curve_id
-   {
-      quadratic,
-      quadratic_curation,
-      linear,
-      square_root
    };
 
    struct by_price;
@@ -267,14 +263,14 @@ namespace amalgam { namespace chain {
          ordered_unique< tag< by_id >, member< withdraw_vesting_route_object, withdraw_vesting_route_id_type, &withdraw_vesting_route_object::id > >,
          ordered_unique< tag< by_withdraw_route >,
             composite_key< withdraw_vesting_route_object,
-               member< withdraw_vesting_route_object, account_id_type, &withdraw_vesting_route_object::from_account >,
-               member< withdraw_vesting_route_object, account_id_type, &withdraw_vesting_route_object::to_account >
+               member< withdraw_vesting_route_object, account_name_type, &withdraw_vesting_route_object::from_account >,
+               member< withdraw_vesting_route_object, account_name_type, &withdraw_vesting_route_object::to_account >
             >,
-            composite_key_compare< std::less< account_id_type >, std::less< account_id_type > >
+            composite_key_compare< std::less< account_name_type >, std::less< account_name_type > >
          >,
          ordered_unique< tag< by_destination >,
             composite_key< withdraw_vesting_route_object,
-               member< withdraw_vesting_route_object, account_id_type, &withdraw_vesting_route_object::to_account >,
+               member< withdraw_vesting_route_object, account_name_type, &withdraw_vesting_route_object::to_account >,
                member< withdraw_vesting_route_object, withdraw_vesting_route_id_type, &withdraw_vesting_route_object::id >
             >
          >
@@ -366,14 +362,14 @@ namespace amalgam { namespace chain {
       indexed_by<
          ordered_unique< tag< by_id >, member< decline_voting_rights_request_object, decline_voting_rights_request_id_type, &decline_voting_rights_request_object::id > >,
          ordered_unique< tag< by_account >,
-            member< decline_voting_rights_request_object, account_id_type, &decline_voting_rights_request_object::account >
+            member< decline_voting_rights_request_object, account_name_type, &decline_voting_rights_request_object::account >
          >,
          ordered_unique< tag< by_effective_date >,
             composite_key< decline_voting_rights_request_object,
                member< decline_voting_rights_request_object, time_point_sec, &decline_voting_rights_request_object::effective_date >,
-               member< decline_voting_rights_request_object, account_id_type, &decline_voting_rights_request_object::account >
+               member< decline_voting_rights_request_object, account_name_type, &decline_voting_rights_request_object::account >
             >,
-            composite_key_compare< std::less< time_point_sec >, std::less< account_id_type > >
+            composite_key_compare< std::less< time_point_sec >, std::less< account_name_type > >
          >
       >,
       allocator< decline_voting_rights_request_object >
@@ -382,9 +378,6 @@ namespace amalgam { namespace chain {
 } } // amalgam::chain
 
 #include <amalgam/chain/account_object.hpp>
-
-FC_REFLECT_ENUM( amalgam::chain::curve_id,
-                  (quadratic)(quadratic_curation)(linear)(square_root))
 
 FC_REFLECT( amalgam::chain::limit_order_object,
              (id)(created)(expiration)(seller)(orderid)(for_sale)(sell_price) )

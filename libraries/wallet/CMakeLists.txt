@@ -24,9 +24,15 @@ else()
 endif()
 
 add_library( amalgam_wallet wallet.cpp ${CMAKE_CURRENT_BINARY_DIR}/api_documentation.cpp ${HEADERS} )
-# I don't know why amalgam_app is required twice in the following line, I just know the linker breaks if it isn't.
-target_link_libraries( amalgam_wallet PRIVATE amalgam_app graphene_net amalgam_chain amalgam_protocol graphene_utilities fc amalgam_private_message amalgam_app amalgam_follow amalgam_account_by_key ${CMAKE_DL_LIBS} ${PLATFORM_SPECIFIC_LIBS} )
+target_link_libraries( amalgam_wallet PRIVATE graphene_net amalgam_chain amalgam_protocol amalgam_utilities fc database_api_plugin network_broadcast_api_plugin account_by_key_api_plugin market_history_api_plugin ${CMAKE_DL_LIBS} ${PLATFORM_SPECIFIC_LIBS} )
 target_include_directories( amalgam_wallet PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      amalgam_wallet PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
 
 if(MSVC)
   set_source_files_properties( wallet.cpp PROPERTIES COMPILE_FLAGS "/bigobj" )

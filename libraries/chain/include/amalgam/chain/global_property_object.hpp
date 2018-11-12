@@ -84,6 +84,11 @@ namespace amalgam { namespace chain {
          uint8_t       participation_count = 0; ///< Divide by 128 to compute participation percentage
 
          uint32_t last_irreversible_block_num = 0;
+         
+         uint32_t delegation_return_period = 0;
+
+         uint16_t abd_stop_percent = 0;
+         uint16_t abd_start_percent = 0;
    };
 
    typedef multi_index_container<
@@ -117,5 +122,8 @@ FC_REFLECT( amalgam::chain::dynamic_global_property_object,
              (recent_slots_filled)
              (participation_count)
              (last_irreversible_block_num)
+             (delegation_return_period)
+             (abd_stop_percent)
+             (abd_start_percent)
           )
 CHAINBASE_SET_INDEX_TYPE( amalgam::chain::dynamic_global_property_object, amalgam::chain::dynamic_global_property_index )

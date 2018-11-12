@@ -1,13 +1,15 @@
 #include <amalgam/protocol/amalgam_operations.hpp>
+
 #include <fc/io/json.hpp>
 
 #include <locale>
 
 namespace amalgam { namespace protocol {
 
-   bool inline is_asset_type( asset asset, asset_symbol_type symbol )
+   void validate_auth_size( const authority& a )
    {
-      return asset.symbol == symbol;
+      size_t size = a.account_auths.size() + a.key_auths.size();
+      FC_ASSERT( size <= AMALGAM_MAX_AUTHORITY_MEMBERSHIP, "Authority membership exceeded. Max: 10 Current: ${n}", ("n", size) );
    }
 
    void account_create_operation::validate() const
@@ -57,7 +59,7 @@ namespace amalgam { namespace protocol {
       validate_account_name( from );
       FC_ASSERT( is_asset_type( amount, AMALGAM_SYMBOL ), "Amount must be AMALGAM" );
       if ( to != account_name_type() ) validate_account_name( to );
-      FC_ASSERT( amount > asset( 0, AMALGAM_SYMBOL ), "Must transfer a nonzero amount" );
+      FC_ASSERT( amount.amount > 0, "Must transfer a nonzero amount" );
    }
 
    void withdraw_vesting_operation::validate() const
@@ -76,10 +78,76 @@ namespace amalgam { namespace protocol {
    void witness_update_operation::validate() const
    {
       validate_account_name( owner );
+
+      FC_ASSERT( url.size() <= AMALGAM_MAX_WITNESS_URL_LENGTH, "URL is too long" );
+
       FC_ASSERT( url.size() > 0, "URL size must be greater than 0" );
       FC_ASSERT( fc::is_utf8( url ), "URL is not valid UTF8" );
       FC_ASSERT( fee >= asset( 0, AMALGAM_SYMBOL ), "Fee cannot be negative" );
       props.validate();
+   }
+
+   void witness_set_properties_operation::validate() const
+   {
+      validate_account_name( owner );
+
+      // current signing key must be present
+      FC_ASSERT( props.find( "key" ) != props.end(), "No signing key provided" );
+
+      auto itr = props.find( "account_creation_fee" );
+      if( itr != props.end() )
+      {
+         asset account_creation_fee;
+         fc::raw::unpack_from_vector( itr->second, account_creation_fee );
+         FC_ASSERT( account_creation_fee.symbol == AMALGAM_SYMBOL, "account_creation_fee must be in AMALGAM" );
+         FC_ASSERT( account_creation_fee.amount >= AMALGAM_MIN_ACCOUNT_CREATION_FEE, "account_creation_fee smaller than minimum account creation fee" );
+      }
+
+      itr = props.find( "maximum_block_size" );
+      if( itr != props.end() )
+      {
+         uint32_t maximum_block_size;
+         fc::raw::unpack_from_vector( itr->second, maximum_block_size );
+         FC_ASSERT( maximum_block_size >= AMALGAM_MIN_BLOCK_SIZE_LIMIT, "maximum_block_size smaller than minimum max block size" );
+      }
+
+      itr = props.find( "abd_interest_rate" );
+      if( itr != props.end() )
+      {
+         uint16_t abd_interest_rate;
+         fc::raw::unpack_from_vector( itr->second, abd_interest_rate );
+         FC_ASSERT( abd_interest_rate >= 0, "abd_interest_rate must be positive" );
+         FC_ASSERT( abd_interest_rate <= AMALGAM_100_PERCENT, "abd_interest_rate must not exceed 100%" );
+      }
+
+      itr = props.find( "new_signing_key" );
+      if( itr != props.end() )
+      {
+         public_key_type signing_key;
+         fc::raw::unpack_from_vector( itr->second, signing_key );
+         FC_UNUSED( signing_key ); // This tests the deserialization of the key
+      }
+
+      itr = props.find( "abd_exchange_rate" );
+      if( itr != props.end() )
+      {
+         price abd_exchange_rate;
+         fc::raw::unpack_from_vector( itr->second, abd_exchange_rate );
+         FC_ASSERT( ( is_asset_type( abd_exchange_rate.base, ABD_SYMBOL ) && is_asset_type( abd_exchange_rate.quote, AMALGAM_SYMBOL ) ),
+            "Price feed must be a AMALGAM/ABD price" );
+         abd_exchange_rate.validate();
+      }
+
+      itr = props.find( "url" );
+      if( itr != props.end() )
+      {
+         std::string url;
+         fc::raw::unpack_from_vector< std::string >( itr->second, url );
+
+         FC_ASSERT( url.size() <= AMALGAM_MAX_WITNESS_URL_LENGTH, "URL is too long" );
+         FC_ASSERT( url.size() > 0, "URL size must be greater than 0" );
+         FC_ASSERT( fc::is_utf8( url ), "URL is not valid UTF8" );
+      }
    }
 
    void account_witness_vote_operation::validate() const
@@ -98,12 +166,12 @@ namespace amalgam { namespace protocol {
 
    void custom_operation::validate() const {
       /// required auth accounts are the ones whose bandwidth is consumed
-      FC_ASSERT( required_auths.size() > 0, "at least on account must be specified" );
+      FC_ASSERT( required_auths.size() > 0, "at least one account must be specified" );
    }
    
    void custom_json_operation::validate() const {
       /// required auth accounts are the ones whose bandwidth is consumed
-      FC_ASSERT( (required_auths.size() + required_posting_auths.size()) > 0, "at least on account must be specified" );
+      FC_ASSERT( (required_auths.size() + required_posting_auths.size()) > 0, "at least one account must be specified" );
       FC_ASSERT( id.size() <= 32, "id is too long" );
       FC_ASSERT( fc::is_utf8(json), "JSON Metadata not formatted in UTF8" );
       FC_ASSERT( fc::json::is_valid(json), "JSON Metadata not valid JSON" );
@@ -111,7 +179,7 @@ namespace amalgam { namespace protocol {
    
    void custom_binary_operation::validate() const {
       /// required auth accounts are the ones whose bandwidth is consumed
-      FC_ASSERT( (required_owner_auths.size() + required_active_auths.size() + required_posting_auths.size()) > 0, "at least on account must be specified" );
+      FC_ASSERT( (required_owner_auths.size() + required_active_auths.size() + required_posting_auths.size()) > 0, "at least one account must be specified" );
       FC_ASSERT( id.size() <= 32, "id is too long" );
       for( const auto& a : required_auths ) a.validate();
    }
@@ -128,14 +196,18 @@ namespace amalgam { namespace protocol {
    void limit_order_create_operation::validate()const
    {
       validate_account_name( owner );
+
       FC_ASSERT( ( is_asset_type( amount_to_sell, AMALGAM_SYMBOL ) && is_asset_type( min_to_receive, ABD_SYMBOL ) )
          || ( is_asset_type( amount_to_sell, ABD_SYMBOL ) && is_asset_type( min_to_receive, AMALGAM_SYMBOL ) ),
          "Limit order must be for the AMALGAM:ABD market" );
+
       (amount_to_sell / min_to_receive).validate();
    }
+
    void limit_order_create2_operation::validate()const
    {
       validate_account_name( owner );
+
       FC_ASSERT( amount_to_sell.symbol == exchange_rate.base.symbol, "Sell asset must be the base of the price" );
       exchange_rate.validate();
 
@@ -155,7 +227,7 @@ namespace amalgam { namespace protocol {
    {
       validate_account_name( owner );
       /// only allow conversion from ABD to AMALGAM, allowing the opposite can enable traders to abuse
-      /// market fluxuations through converting large quantities without moving the price.
+      /// market fluctuations through converting large quantities without moving the price.
       FC_ASSERT( is_asset_type( amount, ABD_SYMBOL ), "Can only convert ABD to AMALGAM" );
       FC_ASSERT( amount.amount > 0, "Must convert some ABD" );
    }

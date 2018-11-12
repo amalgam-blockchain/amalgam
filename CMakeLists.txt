@@ -60,6 +60,16 @@ if( BUILD_AMALGAM_TESTNET  )
   SET( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DIS_TEST_NET" )
 endif()
 
+OPTION( ENABLE_STD_ALLOCATOR_SUPPORT "Build source with STD allocator (ON OR OFF)" OFF )
+MESSAGE( STATUS "ENABLE_STD_ALLOCATOR_SUPPORT: ${ENABLE_STD_ALLOCATOR_SUPPORT}" )
+if( ENABLE_STD_ALLOCATOR_SUPPORT )
+  MESSAGE( STATUS "     " )
+  MESSAGE( STATUS "             CONFIGURING FOR STD ALLOCATOR             " )
+  MESSAGE( STATUS "     " )
+  SET( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENABLE_STD_ALLOCATOR" )
+  SET( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DENABLE_STD_ALLOCATOR" )
+endif()
+
 OPTION( LOW_MEMORY_NODE "Build source for low memory node (ON OR OFF)" OFF )
 MESSAGE( STATUS "LOW_MEMORY_NODE: ${LOW_MEMORY_NODE}" )
 if( LOW_MEMORY_NODE )
@@ -97,6 +107,34 @@ if( AMALGAM_STATIC_BUILD AND ( ( MSVC AND NOT MINGW ) OR APPLE ) )
    SET( AMALGAM_STATIC_BUILD OFF )
 endif()
 MESSAGE( STATUS "AMALGAM_STATIC_BUILD: ${AMALGAM_STATIC_BUILD}" )
+
+SET( AMALGAM_LINT_LEVEL "OFF" CACHE STRING "Lint level during amalgam build (FULL, HIGH, LOW, OFF)" )
+find_program(
+   CLANG_TIDY_EXE
+   NAMES "clang-tidy"
+   DOC "Path to clain-tidy executable"
+)
+
+if( NOT CLANG_TIDY_EXE )
+   message( STATUS "clang-tidy not found" )
+elseif( VERSION LESS 3.6 )
+   messgae( STATUS "clang-tidy found but only supported with CMake version >= 3.6" )
+else()
+   message( STATUS "clany-tidy found: ${CLANG_TIDY_EXE}" )
+   if( "${AMALGAM_LINT_LEVEL}" STREQUAL "FULL" )
+      message( STATUS "Linting level set to: FULL" )
+      set( DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks='*'" )
+   elseif( "${AMALGAM_LINT_LEVEL}" STREQUAL "HIGH" )
+      message( STATUS "Linting level set to: HIGH" )
+      set( DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks='boost-use-to-string,clang-analyzer-*,cppcoreguidelines-*,llvm-*,misc-*,performance-*,readability-*'" )
+   elseif( "${AMALGAM_LINT_LEVEL}" STREQUAL "LOW" )
+      message( STATUS "Linting level set to: LOW" )
+      set( DO_CLANG_TIDY "${CLANG_TIDY_EXE}" "-checks='clang-analyzer-*'" )
+   else()
+      unset( CLANG_TIDY_EXE )
+      message( STATUS "Linting level set to: OFF" )
+   endif()
+endif( NOT CLANG_TIDY_EXE )
 
 IF( WIN32 )
   SET(BOOST_ROOT $ENV{BOOST_ROOT})
@@ -142,7 +180,7 @@ if( WIN32 )
       SET(TCL_LIBRARY ${TCL_LIBS})
 
    elseif( MINGW )
-      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fpermissive -msse4.2 -Wa,-mbig-obj")
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fpermissive -msse4.2 -Wa,-mbig-obj")
       SET(CMAKE_CXX_FLAGS_RELEASE "-O3")
       # Optimization flag apparently needed to get rid of "File too big" assembler errors when compiling in Debug mode
       # See: https://stackoverflow.com/questions/14125007/gcc-string-table-overflow-error-during-compilation/14601779#29479701
@@ -163,11 +201,11 @@ else( WIN32 ) # Apple AND Linux
     if( APPLE )
         # Apple Specific Options Here
         message( STATUS "Configuring Amalgam on OS X" )
-        set( CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++11 -stdlib=libc++ -Wall -Wno-conversion -Wno-deprecated-declarations" )
+        set( CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++14 -stdlib=libc++ -Wall -Wno-conversion -Wno-deprecated-declarations" )
     else( APPLE )
         # Linux Specific Options Here
         message( STATUS "Configuring Amalgam on Linux" )
-        set( CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++11 -Wall" )
+        set( CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++14 -Wall" )
         set( rt_library rt )
         set( pthread_library pthread)
         if ( NOT DEFINED crypto_library )
@@ -260,6 +298,12 @@ if( BUILD_AMALGAM_TESTNET )
   MESSAGE( STATUS "\n\n             CONFIGURED FOR TEST NETWORK             \n\n" )
 else()
   MESSAGE( STATUS "\n\n             CONFIGURED FOR AMALGAM NETWORK             \n\n" )
+endif()
+
+if( ENABLE_STD_ALLOCATOR_SUPPORT )
+  MESSAGE( STATUS "\n\n             CONFIGURED FOR STD ALLOCATOR SUPPORT             \n\n" )
+else()
+  MESSAGE( STATUS "\n\n             CONFIGURED FOR NO SUPPORT OF STD ALLOCATOR             \n\n" )
 endif()
 
 if( LOW_MEMORY_NODE )

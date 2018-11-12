@@ -1,6 +1,7 @@
 #pragma once
 #include <amalgam/protocol/transaction.hpp>
 
+#include <amalgam/chain/buffer_type.hpp>
 #include <amalgam/chain/amalgam_object_types.hpp>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -8,6 +9,7 @@
 namespace amalgam { namespace chain {
 
    using amalgam::protocol::signed_transaction;
+   using chainbase::t_vector;
 
    /**
     * The purpose of this object is to enable the detection of duplicate transactions. When a transaction is included
@@ -28,7 +30,9 @@ namespace amalgam { namespace chain {
 
          id_type              id;
 
-         bip::vector< char, allocator< char > > packed_trx;
+         typedef buffer_type t_packed_trx;
+
+         t_packed_trx         packed_trx;
          transaction_id_type  trx_id;
          time_point_sec       expiration;
    };
@@ -49,3 +53,31 @@ namespace amalgam { namespace chain {
 
 FC_REFLECT( amalgam::chain::transaction_object, (id)(packed_trx)(trx_id)(expiration) )
 CHAINBASE_SET_INDEX_TYPE( amalgam::chain::transaction_object, amalgam::chain::transaction_index )
+
+namespace helpers
+{
+   template <>
+   class index_statistic_provider<amalgam::chain::transaction_index>
+   {
+   public:
+      typedef amalgam::chain::transaction_index IndexType;
+      typedef typename amalgam::chain::transaction_object::t_packed_trx t_packed_trx;
+
+      index_statistic_info gather_statistics(const IndexType& index, bool onlyStaticInfo) const
+      {
+         index_statistic_info info;
+         gather_index_static_data(index, &info);
+
+         if(onlyStaticInfo == false)
+         {
+            for(const auto& o : index)
+            {
+               info._item_additional_allocation += o.packed_trx.capacity()*sizeof(t_packed_trx::value_type);
+            }
+         }
+
+         return info;
+      }
+   };
+
+} /// namespace helpers

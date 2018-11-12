@@ -1,15 +1,22 @@
-file(GLOB HEADERS "include/amalgam/account_history/*.hpp")
+file(GLOB HEADERS "include/amalgam/plugins/account_history/*.hpp")
 
-add_library( amalgam_account_history
+add_library( account_history_plugin
              account_history_plugin.cpp
            )
 
-target_link_libraries( amalgam_account_history amalgam_chain amalgam_protocol amalgam_app )
-target_include_directories( amalgam_account_history
+target_link_libraries( account_history_plugin chain_plugin amalgam_chain amalgam_protocol amalgam_utilities )
+target_include_directories( account_history_plugin
                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      account_history_plugin PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
+
 install( TARGETS
-   amalgam_account_history
+   account_history_plugin
 
    RUNTIME DESTINATION bin
    LIBRARY DESTINATION lib

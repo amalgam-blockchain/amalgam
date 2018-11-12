@@ -4,6 +4,9 @@
 #include <fc/io/raw_fwd.hpp>
 
 #include <boost/endian/conversion.hpp>
+#include <boost/utility/identity_type.hpp>
+
+#include <amalgam/protocol/types_fwd.hpp>
 
 // These overloads need to be defined before the implementation in fixed_string
 namespace fc
@@ -61,14 +64,17 @@ namespace amalgam { namespace protocol {
  *
  * The string will serialize the same way as std::string for variant and raw formats.
  */
-template< typename Storage = fc::uint128 >
-class fixed_string
+
+template< typename _Storage >
+class fixed_string_impl
 {
    public:
-      fixed_string(){}
-      fixed_string( const fixed_string& c ) : data( c.data ){}
-      fixed_string( const char* str ) : fixed_string( std::string( str ) ) {}
-      fixed_string( const std::string& str )
+      typedef _Storage Storage;
+
+      fixed_string_impl() = default;
+      fixed_string_impl( const fixed_string_impl& c ) : data( c.data ){}
+      fixed_string_impl( const char* str ) : fixed_string_impl( std::string( str ) ) {}
+      fixed_string_impl( const std::string& str )
       {
          Storage d;
          if( str.size() <= sizeof(d) )
@@ -82,13 +88,7 @@ class fixed_string
       operator std::string()const
       {
          Storage d = boost::endian::native_to_big( data );
-         size_t s;
-
-         if( *(((const char*)&d) + sizeof(d) - 1) )
-            s = sizeof(d);
-         else
-            s = strnlen( (const char*)&d, sizeof(d) );
-
+         size_t s = strnlen( (const char*)&d, sizeof(d) );
          const char* self = (const char*)&d;
 
          return std::string( self, self + s );
@@ -97,70 +97,138 @@ class fixed_string
       uint32_t size()const
       {
          Storage d = boost::endian::native_to_big( data );
-         if( *(((const char*)&d) + sizeof(d) - 1) )
-            return sizeof(d);
+
          return strnlen( (const char*)&d, sizeof(d) );
       }
 
       uint32_t length()const { return size(); }
 
-      fixed_string& operator = ( const fixed_string& str )
+      fixed_string_impl& operator = ( const fixed_string_impl& str )
       {
          data = str.data;
          return *this;
       }
 
-      fixed_string& operator = ( const char* str )
+      fixed_string_impl& operator = ( const char* str )
       {
-         *this = fixed_string( str );
+         *this = fixed_string_impl( str );
          return *this;
       }
 
-      fixed_string& operator = ( const std::string& str )
+      fixed_string_impl& operator = ( const std::string& str )
       {
-         *this = fixed_string( str );
+         *this = fixed_string_impl( str );
          return *this;
       }
 
-      friend std::string operator + ( const fixed_string& a, const std::string& b ) { return std::string( a ) + b; }
-      friend std::string operator + ( const std::string& a, const fixed_string& b ){ return a + std::string( b ); }
-      friend bool operator < ( const fixed_string& a, const fixed_string& b ) { return a.data < b.data; }
-      friend bool operator <= ( const fixed_string& a, const fixed_string& b ) { return a.data <= b.data; }
-      friend bool operator > ( const fixed_string& a, const fixed_string& b ) { return a.data > b.data; }
-      friend bool operator >= ( const fixed_string& a, const fixed_string& b ) { return a.data >= b.data; }
-      friend bool operator == ( const fixed_string& a, const fixed_string& b ) { return a.data == b.data; }
-      friend bool operator != ( const fixed_string& a, const fixed_string& b ) { return a.data != b.data; }
+      friend std::string operator + ( const fixed_string_impl& a, const std::string& b ) { return std::string( a ) + b; }
+      friend std::string operator + ( const std::string& a, const fixed_string_impl& b ){ return a + std::string( b ); }
+      friend bool operator < ( const fixed_string_impl& a, const fixed_string_impl& b ) { return a.data < b.data; }
+      friend bool operator <= ( const fixed_string_impl& a, const fixed_string_impl& b ) { return a.data <= b.data; }
+      friend bool operator > ( const fixed_string_impl& a, const fixed_string_impl& b ) { return a.data > b.data; }
+      friend bool operator >= ( const fixed_string_impl& a, const fixed_string_impl& b ) { return a.data >= b.data; }
+      friend bool operator == ( const fixed_string_impl& a, const fixed_string_impl& b ) { return a.data == b.data; }
+      friend bool operator != ( const fixed_string_impl& a, const fixed_string_impl& b ) { return a.data != b.data; }
 
       Storage data;
 };
 
 // These storage types work with memory layout and should be used instead of a custom template.
-typedef fixed_string< fc::uint128_t >                               fixed_string_16;
-typedef fixed_string< fc::erpair< fc::uint128_t, uint64_t > >       fixed_string_24;
-typedef fixed_string< fc::erpair< fc::uint128_t, fc::uint128_t > >  fixed_string_32;
+template< size_t N > struct fixed_string_impl_for_size;
+template< typename T > struct fixed_string_size_for_impl;
+
+//
+// The main purpose of this macro is to auto-generate the boilerplate
+// for different fixed_string sizes that have different backing types.
+//
+// This "boilerplate" is simply templates which allow us to go from
+// size -> type and from type -> size at compile time.
+//
+// We want to write this one-liner:
+//
+//     AMALGAM_DEFINE_FIXED_STRING_IMPL( 32, fc::erpair< fc::uint128_t, fc::uint128_t > )
+//
+// Unfortunately, since the preprocessor doesn't do syntactic parsing,
+// this would be regarded as a 3-argument call (since there are three commas,
+// and the PP doesn't "know" enough C++ syntax to "understand" the internal
+// comma separating the two arguments to erpair "shouldn't" be taken
+// as delimiting separate macro arguments).
+//
+// Fortunately, there is a solution that involves using parentheses to "quote"
+// the argument, then using a dummy function type to "unquote" it.
+// This solution is explained here:
+//
+//     https://stackoverflow.com/questions/13842468/comma-in-c-c-macro
+//
+// We don't have to code this preprocessor hack ourselves, as a battle-tested,
+// widely-compatible implementation is available in the Boost Identity Type
+// library.  Which allows our one-liner to be:
+//
+//     AMALGAM_DEFINE_FIXED_STRING_IMPL( 32, BOOST_IDENTITY_TYPE((fc::erpair< fc::uint128_t, fc::uint128_t >)) )
+//
+#define AMALGAM_DEFINE_FIXED_STRING_IMPL( SIZE, STORAGE_TYPE )       \
+template<>                                                         \
+struct fixed_string_impl_for_size< SIZE >                          \
+{                                                                  \
+   typedef amalgam::protocol::fixed_string_impl< STORAGE_TYPE > t;   \
+};                                                                 \
+                                                                   \
+template<>                                                         \
+struct fixed_string_size_for_impl< STORAGE_TYPE >                  \
+{                                                                  \
+   static const size_t size = SIZE;                                \
+};
+
+AMALGAM_DEFINE_FIXED_STRING_IMPL( 16, BOOST_IDENTITY_TYPE((fc::uint128_t)) )
+AMALGAM_DEFINE_FIXED_STRING_IMPL( 24, BOOST_IDENTITY_TYPE((fc::erpair< fc::uint128_t, uint64_t >)) )
+AMALGAM_DEFINE_FIXED_STRING_IMPL( 32, BOOST_IDENTITY_TYPE((fc::erpair< fc::uint128_t, fc::uint128_t >)) )
+
+template< size_t N >
+using fixed_string = typename fixed_string_impl_for_size<N>::t;
 
 } } // amalgam::protocol
 
 namespace fc { namespace raw {
 
-   template< typename Stream, typename Storage >
-   inline void pack( Stream& s, const amalgam::protocol::fixed_string< Storage >& u )
-   {
-      pack( s, std::string( u ) );
-   }
+template< typename Stream, typename Storage >
+inline void pack( Stream& s, const amalgam::protocol::fixed_string_impl< Storage >& u )
+{
+   pack( s, std::string( u ) );
+}
 
-   template< typename Stream, typename Storage >
-   inline void unpack( Stream& s, amalgam::protocol::fixed_string< Storage >& u )
-   {
-      std::string str;
-      unpack( s, str );
-      u = str;
-   }
+template< typename Stream, typename Storage >
+inline void unpack( Stream& s, amalgam::protocol::fixed_string_impl< Storage >& u )
+{
+   std::string str;
+   unpack( s, str );
+   u = str;
+}
 
 } // raw
-   template< typename Storage >
-   void to_variant(   const amalgam::protocol::fixed_string< Storage >& s, variant& v ) { v = std::string( s ); }
 
-   template< typename Storage >
-   void from_variant( const variant& v, amalgam::protocol::fixed_string< Storage >& s ) { s = v.as_string(); }
+template< typename Storage >
+void to_variant(   const amalgam::protocol::fixed_string_impl< Storage >& s, variant& v )
+{
+   v = std::string( s );
+}
+
+template< typename Storage >
+void from_variant( const variant& v, amalgam::protocol::fixed_string_impl< Storage >& s )
+{
+   s = v.as_string();
+}
+
+template< typename Storage >
+struct get_typename< amalgam::protocol::fixed_string_impl< Storage > >
+{
+   static const char* name()
+   {
+      static const std::string n =
+         std::string("amalgam::protocol::fixed_string<") +
+         std::to_string( amalgam::protocol::fixed_string_size_for_impl<Storage>::size ) +
+         std::string(">");
+      return n.c_str();
+   }
+};
+
 } // fc

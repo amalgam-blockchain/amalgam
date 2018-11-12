@@ -21,11 +21,9 @@ void witness_update_evaluator::do_apply( const witness_update_operation& o )
 
    FC_ASSERT( o.props.account_creation_fee.symbol == AMALGAM_SYMBOL );
 
-   #pragma message( "TODO: This needs to be part of HF 20 and moved to validate if not triggered in previous blocks" )
-   if( _db.is_producing() )
-   {
-      FC_ASSERT( o.props.maximum_block_size <= AMALGAM_SOFT_MAX_BLOCK_SIZE, "Max block size cannot be more than 2MiB" );
-   }
+   FC_ASSERT( o.props.account_creation_fee.amount <= AMALGAM_MAX_ACCOUNT_CREATION_FEE, "account_creation_fee greater than maximum account creation fee" );
+   
+   FC_ASSERT( o.props.maximum_block_size <= AMALGAM_SOFT_MAX_BLOCK_SIZE, "Max block size cannot be more than 2MiB" );
 
    const auto& by_witness_name_idx = _db.get_index< witness_index >().indices().get< by_name >();
    auto wit_itr = by_witness_name_idx.find( o.owner );
@@ -47,6 +45,115 @@ void witness_update_evaluator::do_apply( const witness_update_operation& o )
          w.props              = o.props;
       });
    }
+}
+
+struct witness_properties_change_flags
+{
+   uint32_t account_creation_changed       : 1;
+   uint32_t max_block_changed              : 1;
+   uint32_t abd_interest_changed           : 1;
+   uint32_t key_changed                    : 1;
+   uint32_t abd_exchange_changed           : 1;
+   uint32_t url_changed                    : 1;
+};
+
+void witness_set_properties_evaluator::do_apply( const witness_set_properties_operation& o )
+{
+   const auto& witness = _db.get< witness_object, by_name >( o.owner ); // verifies witness exists;
+
+   // Capture old properties. This allows only updating the object once.
+   chain_properties  props;
+   public_key_type   signing_key;
+   price             abd_exchange_rate;
+   time_point_sec    last_abd_exchange_update;
+   string            url;
+
+   witness_properties_change_flags flags;
+
+   auto itr = o.props.find( "key" );
+
+   // This existence of 'key' is checked in witness_set_properties_operation::validate
+   fc::raw::unpack_from_vector( itr->second, signing_key );
+   FC_ASSERT( signing_key == witness.signing_key, "'key' does not match witness signing key.",
+      ("key", signing_key)("signing_key", witness.signing_key) );
+
+   itr = o.props.find( "account_creation_fee" );
+   flags.account_creation_changed = itr != o.props.end();
+   if( flags.account_creation_changed )
+   {
+      fc::raw::unpack_from_vector( itr->second, props.account_creation_fee );
+      FC_ASSERT( props.account_creation_fee.amount <= AMALGAM_MAX_ACCOUNT_CREATION_FEE, "account_creation_fee greater than maximum account creation fee" );
+   }
+
+   itr = o.props.find( "maximum_block_size" );
+   flags.max_block_changed = itr != o.props.end();
+   if( flags.max_block_changed )
+   {
+      fc::raw::unpack_from_vector( itr->second, props.maximum_block_size );
+   }
+
+   itr = o.props.find( "abd_interest_rate" );
+   flags.abd_interest_changed = itr != o.props.end();
+   if( flags.abd_interest_changed )
+   {
+      fc::raw::unpack_from_vector( itr->second, props.abd_interest_rate );
+   }
+
+   itr = o.props.find( "new_signing_key" );
+   flags.key_changed = itr != o.props.end();
+   if( flags.key_changed )
+   {
+      fc::raw::unpack_from_vector( itr->second, signing_key );
+   }
+
+   itr = o.props.find( "abd_exchange_rate" );
+   flags.abd_exchange_changed = itr != o.props.end();
+   if( flags.abd_exchange_changed )
+   {
+      fc::raw::unpack_from_vector( itr->second, abd_exchange_rate );
+      last_abd_exchange_update = _db.head_block_time();
+   }
+
+   itr = o.props.find( "url" );
+   flags.url_changed = itr != o.props.end();
+   if( flags.url_changed )
+   {
+      fc::raw::unpack_from_vector< std::string >( itr->second, url );
+   }
+
+   _db.modify( witness, [&]( witness_object& w )
+   {
+      if( flags.account_creation_changed )
+      {
+         w.props.account_creation_fee = props.account_creation_fee;
+      }
+
+      if( flags.max_block_changed )
+      {
+         w.props.maximum_block_size = props.maximum_block_size;
+      }
+
+      if( flags.abd_interest_changed )
+      {
+         w.props.abd_interest_rate = props.abd_interest_rate;
+      }
+
+      if( flags.key_changed )
+      {
+         w.signing_key = signing_key;
+      }
+
+      if( flags.abd_exchange_changed )
+      {
+         w.abd_exchange_rate = abd_exchange_rate;
+         w.last_abd_exchange_update = last_abd_exchange_update;
+      }
+
+      if( flags.url_changed )
+      {
+         from_string( w.url, url );
+      }
+   });
 }
 
 void account_create_evaluator::do_apply( const account_create_operation& o )
@@ -428,7 +535,7 @@ void set_withdraw_vesting_route_evaluator::do_apply( const set_withdraw_vesting_
    const auto& from_account = _db.get_account( o.from_account );
    const auto& to_account = _db.get_account( o.to_account );
    const auto& wd_idx = _db.get_index< withdraw_vesting_route_index >().indices().get< by_withdraw_route >();
-   auto itr = wd_idx.find( boost::make_tuple( from_account.id, to_account.id ) );
+   auto itr = wd_idx.find( boost::make_tuple( from_account.name, to_account.name ) );
 
    if( itr == wd_idx.end() )
    {
@@ -437,8 +544,8 @@ void set_withdraw_vesting_route_evaluator::do_apply( const set_withdraw_vesting_
 
       _db.create< withdraw_vesting_route_object >( [&]( withdraw_vesting_route_object& wvdo )
       {
-         wvdo.from_account = from_account.id;
-         wvdo.to_account = to_account.id;
+         wvdo.from_account = from_account.name;
+         wvdo.to_account = to_account.name;
          wvdo.percent = o.percent;
          wvdo.auto_vest = o.auto_vest;
       });
@@ -461,17 +568,17 @@ void set_withdraw_vesting_route_evaluator::do_apply( const set_withdraw_vesting_
    {
       _db.modify( *itr, [&]( withdraw_vesting_route_object& wvdo )
       {
-         wvdo.from_account = from_account.id;
-         wvdo.to_account = to_account.id;
+         wvdo.from_account = from_account.name;
+         wvdo.to_account = to_account.name;
          wvdo.percent = o.percent;
          wvdo.auto_vest = o.auto_vest;
       });
    }
 
-   itr = wd_idx.upper_bound( boost::make_tuple( from_account.id, account_id_type() ) );
+   itr = wd_idx.upper_bound( boost::make_tuple( from_account.name, account_name_type() ) );
    uint16_t total_percent = 0;
 
-   while( itr->from_account == from_account.id && itr != wd_idx.end() )
+   while( itr->from_account == from_account.name && itr != wd_idx.end() )
    {
       total_percent += itr->percent;
       ++itr;
@@ -539,7 +646,7 @@ void account_witness_vote_evaluator::do_apply( const account_witness_vote_operat
    const auto& witness = _db.get_witness( o.witness );
 
    const auto& by_account_witness_idx = _db.get_index< witness_vote_index >().indices().get< by_account_witness >();
-   auto itr = by_account_witness_idx.find( boost::make_tuple( voter.id, witness.id ) );
+   auto itr = by_account_witness_idx.find( boost::make_tuple( voter.name, witness.owner ) );
 
    if( itr == by_account_witness_idx.end() ) {
       FC_ASSERT( o.approve, "Vote doesn't exist, user must indicate a desire to approve witness." );
@@ -547,8 +654,8 @@ void account_witness_vote_evaluator::do_apply( const account_witness_vote_operat
       FC_ASSERT( voter.witnesses_voted_for < AMALGAM_MAX_ACCOUNT_WITNESS_VOTES, "Account has voted for too many witnesses." ); // TODO: Remove after hardfork 2
 
       _db.create<witness_vote_object>( [&]( witness_vote_object& v ) {
-          v.witness = witness.id;
-          v.account = voter.id;
+          v.witness = witness.owner;
+          v.account = voter.name;
       });
 
       _db.adjust_witness_vote( witness, voter.witness_vote_weight() );
@@ -568,11 +675,25 @@ void account_witness_vote_evaluator::do_apply( const account_witness_vote_operat
    }
 }
 
-void custom_evaluator::do_apply( const custom_operation& o ){}
+void custom_evaluator::do_apply( const custom_operation& o )
+{
+   database& d = db();
+   if( d.is_producing() )
+      FC_ASSERT( o.data.size() <= 8192, "custom_operation must be less than 8k" );
+
+   FC_ASSERT( o.required_auths.size() <= AMALGAM_MAX_AUTHORITY_MEMBERSHIP, "Too many auths specified. Max: 10, Current: ${n}", ("n", o.required_auths.size()) );
+}
 
 void custom_json_evaluator::do_apply( const custom_json_operation& o )
 {
    database& d = db();
+
+   if( d.is_producing() )
+      FC_ASSERT( o.json.length() <= 8192, "custom_json_operation json must be less than 8k" );
+
+   size_t num_auths = o.required_auths.size() + o.required_posting_auths.size();
+   FC_ASSERT( num_auths <= AMALGAM_MAX_AUTHORITY_MEMBERSHIP, "Too many auths specified. Max: 10, Current: ${n}", ("n", num_auths) );
+
    std::shared_ptr< custom_operation_interpreter > eval = d.get_custom_json_evaluator( o.id );
    if( !eval )
       return;
@@ -595,6 +716,19 @@ void custom_json_evaluator::do_apply( const custom_json_operation& o )
 void custom_binary_evaluator::do_apply( const custom_binary_operation& o )
 {
    database& d = db();
+   if( d.is_producing() )
+   {
+      FC_ASSERT( o.data.size() <= 8192, "custom_binary_operation data must be less than 8k" );
+      FC_ASSERT( false, "custom_binary_operation is deprecated" );
+   }
+
+   size_t num_auths = o.required_owner_auths.size() + o.required_active_auths.size() + o.required_posting_auths.size();
+   for( const auto& auth : o.required_auths )
+   {
+      num_auths += auth.key_auths.size() + auth.account_auths.size();
+   }
+
+   FC_ASSERT( num_auths <= AMALGAM_MAX_AUTHORITY_MEMBERSHIP, "Too many auths specified. Max: 10, Current: ${n}", ("n", num_auths) );
 
    std::shared_ptr< custom_operation_interpreter > eval = d.get_custom_json_evaluator( o.id );
    if( !eval )
@@ -650,6 +784,8 @@ void limit_order_create_evaluator::do_apply( const limit_order_create_operation&
 {
    FC_ASSERT( o.expiration > _db.head_block_time(), "Limit order has to expire after head block time." );
 
+   FC_ASSERT( o.expiration <= _db.head_block_time() + AMALGAM_MAX_LIMIT_ORDER_EXPIRATION, "Limit Order Expiration must not be more than 28 days in the future" );
+   
    const auto& owner = _db.get_account( o.owner );
 
    FC_ASSERT( _db.get_balance( owner, o.amount_to_sell.symbol ) >= o.amount_to_sell, "Account does not have sufficient funds for limit order." );
@@ -674,6 +810,8 @@ void limit_order_create_evaluator::do_apply( const limit_order_create_operation&
 void limit_order_create2_evaluator::do_apply( const limit_order_create2_operation& o )
 {
    FC_ASSERT( o.expiration > _db.head_block_time(), "Limit order has to expire after head block time." );
+
+   FC_ASSERT( o.expiration <= _db.head_block_time() + AMALGAM_MAX_LIMIT_ORDER_EXPIRATION, "Limit Order Expiration must not be more than 28 days in the future" );
 
    const auto& owner = _db.get_account( o.owner );
 
@@ -870,7 +1008,7 @@ void decline_voting_rights_evaluator::do_apply( const decline_voting_rights_oper
 {
    const auto& account = _db.get_account( o.account );
    const auto& request_idx = _db.get_index< decline_voting_rights_request_index >().indices().get< by_account >();
-   auto itr = request_idx.find( account.id );
+   auto itr = request_idx.find( account.name );
 
    if( o.decline )
    {
@@ -878,7 +1016,7 @@ void decline_voting_rights_evaluator::do_apply( const decline_voting_rights_oper
 
       _db.create< decline_voting_rights_request_object >( [&]( decline_voting_rights_request_object& req )
       {
-         req.account = account.id;
+         req.account = account.name;
          req.effective_date = _db.head_block_time() + AMALGAM_OWNER_AUTH_RECOVERY_PERIOD;
       });
    }
@@ -968,7 +1106,7 @@ void delegate_vesting_shares_evaluator::do_apply( const delegate_vesting_shares_
       {
          obj.delegator = op.delegator;
          obj.vesting_shares = delta;
-         obj.expiration = std::max( _db.head_block_time() + AMALGAM_CASHOUT_WINDOW_SECONDS, delegation->min_delegation_time );
+         obj.expiration = std::max( _db.head_block_time() + gpo.delegation_return_period, delegation->min_delegation_time );
       });
 
       _db.modify( delegatee, [&]( account_object& a )

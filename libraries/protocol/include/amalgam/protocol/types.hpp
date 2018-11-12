@@ -1,5 +1,7 @@
 #pragma once
+#include <amalgam/protocol/types_fwd.hpp>
 #include <amalgam/protocol/config.hpp>
+
 #include <amalgam/protocol/fixed_string.hpp>
 
 #include <fc/container/flat_fwd.hpp>
@@ -10,8 +12,8 @@
 #include <fc/crypto/elliptic.hpp>
 #include <fc/reflect/reflect.hpp>
 #include <fc/reflect/variant.hpp>
-#include <fc/optional.hpp>
 #include <fc/safe.hpp>
+#include <fc/optional.hpp>
 #include <fc/container/flat.hpp>
 #include <fc/string.hpp>
 #include <fc/io/raw.hpp>
@@ -68,7 +70,7 @@ namespace amalgam {
 
       typedef fc::ecc::private_key        private_key_type;
       typedef fc::sha256                  chain_id_type;
-      typedef fixed_string_16             account_name_type;
+      typedef fixed_string<16>            account_name_type;
       typedef fc::ripemd160               block_id_type;
       typedef fc::ripemd160               checksum_type;
       typedef fc::ripemd160               transaction_id_type;
@@ -76,6 +78,7 @@ namespace amalgam {
       typedef fc::ecc::compact_signature  signature_type;
       typedef safe<int64_t>               share_type;
       typedef uint16_t                    weight_type;
+      typedef uint32_t                    contribution_id_type;
 
 
       struct public_key_type
@@ -99,6 +102,8 @@ namespace amalgam {
             friend bool operator < ( const public_key_type& p1, const public_key_type& p2) { return p1.key_data < p2.key_data; }
             friend bool operator != ( const public_key_type& p1, const public_key_type& p2);
       };
+
+      #define AMALGAM_CREATOR_PUBLIC_KEY (amalgam::protocol::public_key_type(AMALGAM_CREATOR_PUBLIC_KEY_STR))
 
       struct extended_public_key_type
       {
@@ -143,6 +148,9 @@ namespace amalgam {
          friend bool operator == ( const extended_private_key_type& p1, const extended_private_key_type& p2);
          friend bool operator != ( const extended_private_key_type& p1, const extended_private_key_type& p2);
       };
+
+      chain_id_type generate_chain_id( const std::string& chain_id_name );
+
 } }  // amalgam::protocol
 
 namespace fc

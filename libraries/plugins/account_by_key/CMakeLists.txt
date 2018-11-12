@@ -1,16 +1,22 @@
-file(GLOB HEADERS "include/amalgam/account_by_key/*.hpp")
+file(GLOB HEADERS "include/amalgam/plugins/account_by_key/*.hpp")
 
-add_library( amalgam_account_by_key
+add_library( account_by_key_plugin
              account_by_key_plugin.cpp
-             account_by_key_api.cpp
            )
 
-target_link_libraries( amalgam_account_by_key amalgam_chain amalgam_protocol amalgam_app )
-target_include_directories( amalgam_account_by_key
+target_link_libraries( account_by_key_plugin chain_plugin amalgam_chain amalgam_protocol )
+target_include_directories( account_by_key_plugin
                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 
+if( CLANG_TIDY_EXE )
+   set_target_properties(
+      account_by_key_plugin PROPERTIES
+      CXX_CLANG_TIDY "${DO_CLANG_TIDY}"
+   )
+endif( CLANG_TIDY_EXE )
+
 install( TARGETS
-   amalgam_account_by_key
+   account_by_key_plugin
 
    RUNTIME DESTINATION bin
    LIBRARY DESTINATION lib
