@@ -216,7 +216,6 @@ namespace amalgam { namespace chain {
          time_point_sec    effective_on;
    };
 
-   struct by_name;
    struct by_proxy;
    struct by_next_vesting_withdrawal;
 
@@ -247,7 +246,6 @@ namespace amalgam { namespace chain {
    > account_index;
 
    struct by_account;
-   struct by_last_valid;
 
    typedef multi_index_container <
       owner_authority_history_object,

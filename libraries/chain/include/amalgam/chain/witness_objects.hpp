@@ -156,7 +156,6 @@ namespace amalgam { namespace chain {
 
 
    struct by_vote_name;
-   struct by_name;
    struct by_schedule_time;
    /**
     * @ingroup object_index
@@ -188,18 +187,18 @@ namespace amalgam { namespace chain {
    typedef multi_index_container<
       witness_vote_object,
       indexed_by<
-         ordered_unique< tag<by_id>, member< witness_vote_object, witness_vote_id_type, &witness_vote_object::id > >,
-         ordered_unique< tag<by_account_witness>,
+         ordered_unique< tag< by_id >, member< witness_vote_object, witness_vote_id_type, &witness_vote_object::id > >,
+         ordered_unique< tag< by_account_witness >,
             composite_key< witness_vote_object,
-               member<witness_vote_object, account_name_type, &witness_vote_object::account >,
-               member<witness_vote_object, account_name_type, &witness_vote_object::witness >
+               member< witness_vote_object, account_name_type, &witness_vote_object::account >,
+               member< witness_vote_object, account_name_type, &witness_vote_object::witness >
             >,
             composite_key_compare< std::less< account_name_type >, std::less< account_name_type > >
          >,
-         ordered_unique< tag<by_witness_account>,
+         ordered_unique< tag< by_witness_account >,
             composite_key< witness_vote_object,
-               member<witness_vote_object, account_name_type, &witness_vote_object::witness >,
-               member<witness_vote_object, account_name_type, &witness_vote_object::account >
+               member< witness_vote_object, account_name_type, &witness_vote_object::witness >,
+               member< witness_vote_object, account_name_type, &witness_vote_object::account >
             >,
             composite_key_compare< std::less< account_name_type >, std::less< account_name_type > >
          >

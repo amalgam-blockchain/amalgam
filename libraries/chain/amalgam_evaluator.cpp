@@ -17,12 +17,10 @@ void witness_update_evaluator::do_apply( const witness_update_operation& o )
 {
    _db.get_account( o.owner ); // verify owner exists
 
-   FC_ASSERT( o.url.size() <= AMALGAM_MAX_WITNESS_URL_LENGTH, "URL is too long" );
-
    FC_ASSERT( o.props.account_creation_fee.symbol == AMALGAM_SYMBOL );
 
    FC_ASSERT( o.props.account_creation_fee.amount <= AMALGAM_MAX_ACCOUNT_CREATION_FEE, "account_creation_fee greater than maximum account creation fee" );
-   
+
    FC_ASSERT( o.props.maximum_block_size <= AMALGAM_SOFT_MAX_BLOCK_SIZE, "Max block size cannot be more than 2MiB" );
 
    const auto& by_witness_name_idx = _db.get_index< witness_index >().indices().get< by_name >();
@@ -156,6 +154,20 @@ void witness_set_properties_evaluator::do_apply( const witness_set_properties_op
    });
 }
 
+void verify_authority_accounts_exist(
+   const database& db,
+   const authority& auth,
+   const account_name_type& auth_account,
+   authority::classification auth_class)
+{
+   for( const std::pair< account_name_type, weight_type >& aw : auth.account_auths )
+   {
+      const account_object* a = db.find_account( aw.first );
+      FC_ASSERT( a != nullptr, "New ${ac} authority on account ${aa} references non-existing account ${aref}",
+         ("aref", aw.first)("ac", auth_class)("aa", auth_account) );
+   }
+}
+
 void account_create_evaluator::do_apply( const account_create_operation& o )
 {
    const auto& creator = _db.get_account( o.creator );
@@ -165,28 +177,22 @@ void account_create_evaluator::do_apply( const account_create_operation& o )
    FC_ASSERT( creator.balance >= o.fee, "Insufficient balance to create account.", ( "creator.balance", creator.balance )( "required", o.fee ) );
 
    const witness_schedule_object& wso = _db.get_witness_schedule_object();
+
+   FC_ASSERT( o.fee <= asset( AMALGAM_MAX_ACCOUNT_CREATION_FEE, AMALGAM_SYMBOL ), "Account creation fee cannot be too large" );
+
    FC_ASSERT( o.fee >= asset( wso.median_props.account_creation_fee.amount, AMALGAM_SYMBOL ), "Insufficient Fee: ${f} required, ${p} provided.",
               ("f", asset( wso.median_props.account_creation_fee.amount, AMALGAM_SYMBOL ) )
               ("p", o.fee) );
 
-   for( auto& a : o.owner.account_auths )
-   {
-      _db.get_account( a.first );
-   }
+   validate_auth_size( o.owner );
+   validate_auth_size( o.active );
+   validate_auth_size( o.posting );
 
-   for( auto& a : o.active.account_auths )
-   {
-      _db.get_account( a.first );
-   }
+   verify_authority_accounts_exist( _db, o.owner, o.new_account_name, authority::owner );
+   verify_authority_accounts_exist( _db, o.active, o.new_account_name, authority::active );
+   verify_authority_accounts_exist( _db, o.posting, o.new_account_name, authority::posting );
 
-   for( auto& a : o.posting.account_auths )
-   {
-      _db.get_account( a.first );
-   }
-
-   _db.modify( creator, [&]( account_object& c ){
-      c.balance -= o.fee;
-   });
+   _db.adjust_balance( creator, -o.fee );
 
    const auto& new_account = _db.create< account_object >( [&]( account_object& acc )
    {
@@ -194,7 +200,6 @@ void account_create_evaluator::do_apply( const account_create_operation& o )
       acc.memo_key = o.memo_key;
       acc.created = props.time;
       acc.mined = false;
-
       acc.recovery_account = o.creator;
 
       #ifndef IS_LOW_MEM
@@ -226,34 +231,27 @@ void account_update_evaluator::do_apply( const account_update_operation& o )
    const auto& account_auth = _db.get< account_authority_object, by_account >( o.account );
 
    if( o.owner )
+      validate_auth_size( *o.owner );
+   if( o.active )
+      validate_auth_size( *o.active );
+   if( o.posting )
+      validate_auth_size( *o.posting );
+
+   if( o.owner )
    {
 #ifndef IS_TEST_NET
       FC_ASSERT( _db.head_block_time() - account_auth.last_owner_update > AMALGAM_OWNER_UPDATE_LIMIT, "Owner authority can only be updated once an hour." );
 #endif
 
-      for( auto a: o.owner->account_auths )
-      {
-         _db.get_account( a.first );
-      }
+      verify_authority_accounts_exist( _db, *o.owner, o.account, authority::owner );
 
       _db.update_owner_authority( account, *o.owner );
    }
 
    if( o.active )
-   {
-      for( auto a: o.active->account_auths )
-      {
-         _db.get_account( a.first );
-      }
-   }
-
+      verify_authority_accounts_exist( _db, *o.active, o.account, authority::active );
    if( o.posting )
-   {
-      for( auto a: o.posting->account_auths )
-      {
-         _db.get_account( a.first );
-      }
-   }
+      verify_authority_accounts_exist( _db, *o.posting, o.account, authority::posting );
 
    _db.modify( account, [&]( account_object& acc )
    {
@@ -311,7 +309,7 @@ void escrow_transfer_evaluator::do_apply( const escrow_transfer_operation& o )
          esc.ratification_deadline  = o.ratification_deadline;
          esc.escrow_expiration      = o.escrow_expiration;
          esc.abd_balance            = o.abd_amount;
-         esc.amalgam_balance          = o.amalgam_amount;
+         esc.amalgam_balance        = o.amalgam_amount;
          esc.pending_fee            = o.fee;
       });
    }
@@ -405,7 +403,6 @@ void escrow_release_evaluator::do_apply( const escrow_release_operation& o )
    try
    {
       _db.get_account(o.from); // Verify from account exists
-      const auto& receiver_account = _db.get_account(o.receiver);
 
       const auto& e = _db.get_escrow( o.from, o.escrow_id );
       FC_ASSERT( e.amalgam_balance >= o.amalgam_amount, "Release amount exceeds escrow balance. Amount: ${a}, Balance: ${b}", ("a", o.amalgam_amount)("b", e.amalgam_balance) );
@@ -439,6 +436,7 @@ void escrow_release_evaluator::do_apply( const escrow_release_operation& o )
       }
       // If escrow expires and there is no dispute, either party can release funds to either party.
 
+      const auto& receiver_account = _db.get_account(o.receiver);
       _db.adjust_balance( receiver_account, o.amalgam_amount );
       _db.adjust_balance( receiver_account, o.abd_amount );
 
@@ -471,7 +469,8 @@ void transfer_to_vesting_evaluator::do_apply( const transfer_to_vesting_operatio
    const auto& from_account = _db.get_account(o.from);
    const auto& to_account = o.to.size() ? _db.get_account(o.to) : from_account;
 
-   FC_ASSERT( _db.get_balance( from_account, AMALGAM_SYMBOL) >= o.amount, "Account does not have sufficient AMALGAM for transfer." );
+   FC_ASSERT( _db.get_balance( from_account, o.amount.symbol) >= o.amount,
+              "Account does not have sufficient Liquid Amalgam for transfer." );
    _db.adjust_balance( from_account, -o.amount );
    _db.create_vesting( to_account, o.amount );
 }
@@ -745,17 +744,21 @@ void custom_binary_evaluator::do_apply( const custom_binary_operation& o )
    }
    catch(...)
    {
-      elog( "Unexpected exception applying custom json evaluator." );
+      elog( "Unexpected exception applying custom binary evaluator." );
    }
 }
 
 void feed_publish_evaluator::do_apply( const feed_publish_operation& o )
 {
-  const auto& witness = _db.get_witness( o.publisher );
-  _db.modify( witness, [&]( witness_object& w ){
+   FC_ASSERT( is_asset_type( o.exchange_rate.base, ABD_SYMBOL ) && is_asset_type( o.exchange_rate.quote, AMALGAM_SYMBOL ),
+         "Price feed must be a SBD/STEEM price" );
+
+   const auto& witness = _db.get_witness( o.publisher );
+   _db.modify( witness, [&]( witness_object& w )
+   {
       w.abd_exchange_rate = o.exchange_rate;
       w.last_abd_exchange_update = _db.head_block_time();
-  });
+   });
 }
 
 void convert_evaluator::do_apply( const convert_operation& o )
@@ -844,7 +847,11 @@ void request_account_recovery_evaluator::do_apply( const request_account_recover
    const auto& account_to_recover = _db.get_account( o.account_to_recover );
 
    if ( account_to_recover.recovery_account.length() )   // Make sure recovery matches expected recovery account
-      FC_ASSERT( account_to_recover.recovery_account == o.recovery_account, "Cannot recover an account that does not have you as there recovery partner." );
+   {
+      FC_ASSERT( account_to_recover.recovery_account == o.recovery_account, "Cannot recover an account that does not have you as the recovery partner." );
+      if( o.recovery_account == AMALGAM_TEMP_ACCOUNT )
+         wlog( "Recovery by temp account" );
+   }
    else                                                  // Empty string recovery account defaults to top witness
       FC_ASSERT( _db.get_index< witness_index >().indices().get< by_vote_name >().begin()->owner == o.recovery_account, "Top witness must recover an account with no recovery partner." );
 
@@ -855,6 +862,8 @@ void request_account_recovery_evaluator::do_apply( const request_account_recover
    {
       FC_ASSERT( !o.new_owner_authority.is_impossible(), "Cannot recover using an impossible authority." );
       FC_ASSERT( o.new_owner_authority.weight_threshold, "Cannot recover using an open authority." );
+
+      validate_auth_size( o.new_owner_authority );
 
       // Check accounts in the new authority exist
       for( auto& a : o.new_owner_authority.account_auths )
@@ -1037,6 +1046,7 @@ void delegate_vesting_shares_evaluator::do_apply( const delegate_vesting_shares_
 
    const auto& wso = _db.get_witness_schedule_object();
    const auto& gpo = _db.get_dynamic_global_properties();
+
    auto min_delegation = asset( wso.median_props.account_creation_fee.amount / 3, AMALGAM_SYMBOL ) * gpo.get_vesting_share_price();
    auto min_update = asset( wso.median_props.account_creation_fee.amount / 30, AMALGAM_SYMBOL ) * gpo.get_vesting_share_price();
 
@@ -1070,7 +1080,7 @@ void delegate_vesting_shares_evaluator::do_apply( const delegate_vesting_shares_
       auto delta = op.vesting_shares - delegation->vesting_shares;
 
       FC_ASSERT( delta >= min_update, "Solid Amalgam increase is not enough of a difference. min_update: ${min}", ("min", min_update) );
-      FC_ASSERT( available_shares >= op.vesting_shares - delegation->vesting_shares, "Account does not have enough vesting shares to delegate." );
+      FC_ASSERT( available_shares >= delta, "Account does not have enough vesting shares to delegate." );
 
       _db.modify( delegator, [&]( account_object& a )
       {
