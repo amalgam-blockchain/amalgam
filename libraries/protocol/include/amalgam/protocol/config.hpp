@@ -2,6 +2,7 @@
  * Copyright (c) 2017 Amalgam and contributors.
  */
 #pragma once
+#include <amalgam/protocol/hardfork.hpp>
 
 #define AMALGAM_BLOCKCHAIN_VERSION              ( version(0, 1, 0) )
 #define AMALGAM_BLOCKCHAIN_HARDFORK_VERSION     ( hardfork_version( AMALGAM_BLOCKCHAIN_VERSION ) )

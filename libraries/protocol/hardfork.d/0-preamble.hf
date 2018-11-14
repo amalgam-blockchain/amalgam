@@ -12,8 +12,4 @@
 #include <amalgam/protocol/version.hpp>
 #include <set>
 
-#ifdef IS_TEST_NET
 #define AMALGAM_NUM_HARDFORKS 1
-#else
-#define AMALGAM_NUM_HARDFORKS 1
-#endif

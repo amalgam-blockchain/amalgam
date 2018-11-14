@@ -1,5 +1,5 @@
 file(GLOB HEADERS "include/amalgam/protocol/*.hpp")
-file(GLOB HF_PARTS "hardfork.d/*.hpp")
+file(GLOB HF_PARTS "hardfork.d/*.hf")
 
 if( MSVC )
    set( hardfork_hpp_file "${CMAKE_CURRENT_SOURCE_DIR}/include/amalgam/protocol/hardfork.hpp" )
