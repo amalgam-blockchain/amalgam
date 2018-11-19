@@ -32,6 +32,7 @@ namespace fc { namespace rpc {
          std::string on_message(
             const std::string& message,
             bool send_message = true );
+         variant prepare_args( const variants& args );
 
          fc::http::websocket_connection&  _connection;
          fc::rpc::state                   _rpc_state;

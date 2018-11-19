@@ -20,7 +20,7 @@ using namespace plugins::market_history;
  */
 struct remote_database_api
 {
-   DECLARE_API_FC(
+   DECLARE_API_IMPL(
         (get_version)
         (get_active_witnesses)
         (get_block)
@@ -50,7 +50,7 @@ struct remote_database_api
  * Class is used by wallet to send formatted API calls to network_broadcast_api plugin on remote node.
  */
 struct remote_network_broadcast_api {
-   DECLARE_API_FC(
+   DECLARE_API_IMPL(
         (broadcast_transaction_synchronous)
    )
 };
@@ -60,7 +60,7 @@ struct remote_network_broadcast_api {
  * Class is used by wallet to send formatted API calls to account_by_key_api plugin on remote node.
  */
 struct remote_account_by_key_api {
-   DECLARE_API_FC(
+   DECLARE_API_IMPL(
         (get_key_references)
    )
 };
@@ -70,7 +70,7 @@ struct remote_account_by_key_api {
  * Class is used by wallet to send formatted API calls to market_history_api plugin on remote node.
  */
 struct remote_market_history_api {
-   DECLARE_API_FC(
+   DECLARE_API_IMPL(
         (get_order_book)
    )
 };

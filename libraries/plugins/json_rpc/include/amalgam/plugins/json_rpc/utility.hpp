@@ -39,12 +39,6 @@ BOOST_PP_CAT( method, _return ) method( const BOOST_PP_CAT( method, _args )& arg
 #define DECLARE_API_IMPL( METHODS ) \
 BOOST_PP_SEQ_FOR_EACH( DECLARE_API_IMPL_HELPER, _, METHODS )
 
-#define DECLARE_API_FC_HELPER( r, data, method ) \
-BOOST_PP_CAT( method, _return ) method( const BOOST_PP_CAT( method, _args )& args );
-
-#define DECLARE_API_FC( METHODS ) \
-BOOST_PP_SEQ_FOR_EACH( DECLARE_API_FC_HELPER, _, METHODS )
-
 #define DEFINE_API_IMPL( class, method )                                                        \
 BOOST_PP_CAT( method, _return ) class :: method ( const BOOST_PP_CAT( method, _args )& args )   \
 

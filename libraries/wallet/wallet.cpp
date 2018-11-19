@@ -230,6 +230,8 @@ public:
          _remote_market_history_api = con.get_remote_api< remote_market_history_api >( 0, "market_history_api" );
       }
       catch( const fc::exception& e ) {}
+      
+      con.args_as_object = true;
 
       init_prototype_ops();
 
