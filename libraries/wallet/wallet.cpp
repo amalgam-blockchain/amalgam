@@ -217,20 +217,10 @@ public:
    wallet_api_impl( wallet_api& s, const wallet_data& initial_data, const amalgam::protocol::chain_id_type& _amalgam_chain_id, fc::api_connection& con )
       : self( s ),
         _remote_database_api( con.get_remote_api< remote_database_api >( 0, "database_api" ) ),
-        _remote_network_broadcast_api( con.get_remote_api< remote_network_broadcast_api >( 0, "network_broadcast_api" ) )
+        _remote_network_broadcast_api( con.get_remote_api< remote_network_broadcast_api >( 0, "network_broadcast_api" ) ),
+        _remote_account_by_key_api( con.get_remote_api< remote_account_by_key_api >( 0, "account_by_key_api" ) ),
+        _remote_market_history_api( con.get_remote_api< remote_market_history_api >( 0, "market_history_api" ) )
    {
-      try
-      {
-         _remote_account_by_key_api = con.get_remote_api< remote_account_by_key_api >( 0, "account_by_key_api" );
-      }
-      catch( const fc::exception& e ) {}
-      
-      try
-      {
-         _remote_market_history_api = con.get_remote_api< remote_market_history_api >( 0, "market_history_api" );
-      }
-      catch( const fc::exception& e ) {}
-      
       con.args_as_object = true;
 
       init_prototype_ops();
@@ -809,9 +799,9 @@ public:
             const auto& op = item.get_array()[1].get_object();
             ss << std::left << std::setw(10) << op["block"].as_string() << " ";
             ss << std::left << std::setw(15) << op["trx_id"].as_string() << " ";
-            const auto& opop = op["op"].get_array();
-            ss << std::left << std::setw(20) << opop[0].as_string() << " ";
-            ss << std::left << std::setw(50) << fc::json::to_string(opop[1]) << "\n ";
+            const auto& opop = op["op"];
+            ss << std::left << std::setw(20) << opop["type"].as_string() << " ";
+            ss << std::left << std::setw(50) << fc::json::to_string(opop["value"]) << "\n ";
          }
          return ss.str();
       };
@@ -834,7 +824,7 @@ public:
           return ss.str();
       };
       m["get_order_book"] = []( variant result, const fc::variants& a ) {
-         auto orders = result.as< get_order_book_return >();
+         auto orders = result.as< order_book >();
          std::stringstream ss;
          asset bid_sum = asset( 0, ABD_SYMBOL );
          asset ask_sum = asset( 0, ABD_SYMBOL );
@@ -929,10 +919,10 @@ public:
 
    map<public_key_type,string>             _keys;
    fc::sha512                              _checksum;
-   fc::api<remote_database_api>                   _remote_database_api;
-   fc::api<remote_network_broadcast_api>          _remote_network_broadcast_api;
-   optional< fc::api<remote_account_by_key_api> > _remote_account_by_key_api;
-   optional< fc::api<remote_market_history_api> > _remote_market_history_api;
+   fc::api<remote_database_api>            _remote_database_api;
+   fc::api<remote_network_broadcast_api>   _remote_network_broadcast_api;
+   fc::api<remote_account_by_key_api>      _remote_account_by_key_api;
+   fc::api<remote_market_history_api>      _remote_market_history_api;
    uint32_t                                _tx_expiration_seconds = 30;
 
    flat_map<string, operation>             _prototype_ops;
@@ -986,19 +976,13 @@ vector< api_account_object > wallet_api::list_my_accounts()
    FC_ASSERT( !is_locked(), "Wallet must be unlocked to list accounts" );
    vector< api_account_object > result;
    
-   if( !my->_remote_account_by_key_api.valid() )
-   {
-      elog( "Connected node needs to enable account_by_key_api" );
-      return result;
-   }
-
    vector<public_key_type> pub_keys;
    pub_keys.reserve( my->_keys.size() );
 
    for( const auto& item : my->_keys )
       pub_keys.push_back(item.first);
 
-   auto refs = (*my->_remote_account_by_key_api)->get_key_references( { pub_keys } ).accounts;
+   auto refs = my->_remote_account_by_key_api->get_key_references( { pub_keys } ).accounts;
    set<string> names;
    for( const auto& item : refs )
       for( const auto& name : item )
@@ -1691,7 +1675,7 @@ annotated_signed_transaction wallet_api::update_witness(
    witness_update_operation op;
 
    auto witnesses = my->_remote_database_api->find_witnesses( { { witness_account_name } } ).witnesses;
-   if( !witnesses.empty() )
+   if( witnesses.empty() )
    {
       op.url = url;
    }
@@ -2232,14 +2216,8 @@ vector< api_withdraw_vesting_route_object > wallet_api::get_withdraw_routes( str
 
 order_book wallet_api::get_order_book( uint32_t limit )
 {
-   if( !my->_remote_market_history_api.valid() )
-   {
-      elog( "Connected node needs to enable market_history_api" );
-      return order_book();
-   }
-
    FC_ASSERT( limit <= 500 );
-   return (*my->_remote_market_history_api)->get_order_book( { limit } );
+   return my->_remote_market_history_api->get_order_book( { limit } );
 }
 
 vector< api_limit_order_object > wallet_api::get_open_orders( string owner )

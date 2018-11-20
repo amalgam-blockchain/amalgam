@@ -99,7 +99,7 @@ int main( int argc, char** argv )
          wdump((allowed_ips));
       }
 
-      amalgam::protocol::chain_id_type _amalgam_chain_id;
+      amalgam::protocol::chain_id_type _amalgam_chain_id = chain_id_type( AMALGAM_CHAIN_ID );
 
 #ifdef IS_TEST_NET
       if( options.count("chain-id") )
