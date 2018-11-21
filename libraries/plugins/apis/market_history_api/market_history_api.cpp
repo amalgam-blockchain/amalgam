@@ -124,13 +124,13 @@ DEFINE_API_IMPL( market_history_api_impl, get_trade_history )
 
    get_trade_history_return result;
 
-   while( itr != bucket_idx.end() && itr->time <= args.end && result.trades.size() < args.limit )
+   while( itr != bucket_idx.end() && itr->time <= args.end && result.size() < args.limit )
    {
       market_trade trade;
       trade.date = itr->time;
       trade.current_pays = itr->op.current_pays;
       trade.open_pays = itr->op.open_pays;
-      result.trades.push_back( trade );
+      result.push_back( trade );
       ++itr;
    }
 
@@ -145,13 +145,13 @@ DEFINE_API_IMPL( market_history_api_impl, get_recent_trades )
 
    get_recent_trades_return result;
 
-   while( itr != order_idx.rend() && result.trades.size() < args.limit )
+   while( itr != order_idx.rend() && result.size() < args.limit )
    {
       market_trade trade;
       trade.date = itr->time;
       trade.current_pays = itr->op.current_pays;
       trade.open_pays = itr->op.open_pays;
-      result.trades.push_back( trade );
+      result.push_back( trade );
       ++itr;
    }
 
@@ -167,7 +167,7 @@ DEFINE_API_IMPL( market_history_api_impl, get_market_history )
 
    while( itr != bucket_idx.end() && itr->seconds == args.bucket_seconds && itr->open < args.end )
    {
-      result.buckets.push_back( *itr );
+      result.push_back( *itr );
 
       ++itr;
    }
@@ -177,8 +177,7 @@ DEFINE_API_IMPL( market_history_api_impl, get_market_history )
 
 DEFINE_API_IMPL( market_history_api_impl, get_market_history_buckets )
 {
-   get_market_history_buckets_return result;
-   result.bucket_sizes = appbase::app().get_plugin< amalgam::plugins::market_history::market_history_plugin >().get_tracked_buckets();
+   get_market_history_buckets_return result = appbase::app().get_plugin< amalgam::plugins::market_history::market_history_plugin >().get_tracked_buckets();
    return result;
 }
 

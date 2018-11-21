@@ -295,7 +295,7 @@ public:
       result["participation"] = (100*dynamic_props.recent_slots_filled.popcount()) / 128.0;
       result["median_abd_price"] = _remote_database_api->get_current_price_feed( {} );
       result["account_creation_fee"] = _remote_database_api->get_chain_properties( {} ).account_creation_fee;
-      result["reward_fund"] = _remote_database_api->find_accounts( { { AMALGAM_REWARD_FUND_ACCOUNT } } ).accounts.front().balance;
+      result["reward_fund"] = _remote_database_api->find_accounts( { { AMALGAM_REWARD_FUND_ACCOUNT } } ).front().balance;
       return result;
    }
 
@@ -346,7 +346,7 @@ public:
 
    api_account_object get_account( string account_name ) const
    {
-      auto accounts = _remote_database_api->find_accounts( { { account_name } } ).accounts;
+      auto accounts = _remote_database_api->find_accounts( { { account_name } } );
       FC_ASSERT( !accounts.empty(), "Unknown account" );
       return accounts.front();
    }
@@ -537,7 +537,7 @@ public:
    optional< api_witness_object > get_witness( string owner_account )
    {
       fc::optional< api_witness_object > result;
-      auto witnesses = _remote_database_api->find_witnesses( { { owner_account } } ).witnesses;
+      auto witnesses = _remote_database_api->find_witnesses( { { owner_account } } );
       if( !witnesses.empty() )
       {
           result = witnesses.front();
@@ -580,7 +580,7 @@ public:
 
       /// TODO: fetch the accounts specified via other_auths as well.
 
-      auto approving_account_objects = _remote_database_api->find_accounts( { v_approving_account_names } ).accounts;
+      auto approving_account_objects = _remote_database_api->find_accounts( { v_approving_account_names } );
 
       /// TODO: recursively check one layer deeper in the authority tree for keys
 
@@ -954,14 +954,14 @@ bool wallet_api::copy_wallet_file(string destination_filename)
 
 optional< api_signed_block_object > wallet_api::get_block(uint32_t num)
 {
-   return my->_remote_database_api->get_block( { num } ).block;
+   return my->_remote_database_api->get_block( { num } );
 }
 
 vector< api_operation_object > wallet_api::get_ops_in_block(uint32_t block_num, bool only_virtual)
 {
    vector< api_operation_object > result;
 
-   auto ops = my->_remote_database_api->get_ops_in_block( { block_num, only_virtual } ).ops;
+   auto ops = my->_remote_database_api->get_ops_in_block( { block_num, only_virtual } );
 
    for( auto& op_obj : ops )
    {
@@ -982,7 +982,7 @@ vector< api_account_object > wallet_api::list_my_accounts()
    for( const auto& item : my->_keys )
       pub_keys.push_back(item.first);
 
-   auto refs = my->_remote_account_by_key_api->get_key_references( { pub_keys } ).accounts;
+   auto refs = my->_remote_account_by_key_api->get_key_references( { pub_keys } );
    set<string> names;
    for( const auto& item : refs )
       for( const auto& name : item )
@@ -1000,7 +1000,7 @@ vector< account_name_type > wallet_api::list_accounts(const string& lowerbound, 
 {
    vector< account_name_type > result;
 
-   auto accounts = my->_remote_database_api->list_accounts( { lowerbound, limit, sort_order_type::by_name } ).accounts;
+   auto accounts = my->_remote_database_api->list_accounts( { lowerbound, limit, sort_order_type::by_name } );
 
    for( const auto& a : accounts )
    {
@@ -1011,7 +1011,7 @@ vector< account_name_type > wallet_api::list_accounts(const string& lowerbound, 
 }
 
 vector< account_name_type > wallet_api::get_active_witnesses()const {
-   return my->_remote_database_api->get_active_witnesses( {} ).witnesses;
+   return my->_remote_database_api->get_active_witnesses( {} );
 }
 
 brain_key_info wallet_api::suggest_brain_key()const
@@ -1105,7 +1105,7 @@ vector< account_name_type > wallet_api::list_witnesses(const string& lowerbound,
 {
    vector< account_name_type > result;
 
-   auto witnesses = my->_remote_database_api->list_witnesses( { lowerbound, limit, sort_order_type::by_name } ).witnesses;
+   auto witnesses = my->_remote_database_api->list_witnesses( { lowerbound, limit, sort_order_type::by_name } );
 
    for( auto& w : witnesses )
    {
@@ -1328,7 +1328,7 @@ annotated_signed_transaction wallet_api::change_recovery_account( string owner, 
 
 vector< api_owner_authority_history_object > wallet_api::get_owner_history( string account )const
 {
-   return my->_remote_database_api->find_owner_histories( { account } ).owner_auths;
+   return my->_remote_database_api->find_owner_histories( { account } );
 }
 
 annotated_signed_transaction wallet_api::update_account(
@@ -1370,7 +1370,7 @@ annotated_signed_transaction wallet_api::update_account_auth_key(
 {
    FC_ASSERT( !is_locked() );
 
-   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } ).accounts;
+   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } );
    FC_ASSERT( accounts.size() == 1, "Account does not exist" );
    FC_ASSERT( account_name == accounts[0].name, "Account name doesn't match?" );
 
@@ -1442,7 +1442,7 @@ annotated_signed_transaction wallet_api::update_account_auth_account(
 {
    FC_ASSERT( !is_locked() );
 
-   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } ).accounts;
+   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } );
    FC_ASSERT( accounts.size() == 1, "Account does not exist" );
    FC_ASSERT( account_name == accounts[0].name, "Account name doesn't match?" );
 
@@ -1513,7 +1513,7 @@ annotated_signed_transaction wallet_api::update_account_auth_threshold(
 {
    FC_ASSERT( !is_locked() );
 
-   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } ).accounts;
+   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } );
    FC_ASSERT( accounts.size() == 1, "Account does not exist" );
    FC_ASSERT( account_name == accounts[0].name, "Account name doesn't match?" );
    FC_ASSERT( threshold != 0, "Authority is implicitly satisfied" );
@@ -1577,7 +1577,7 @@ annotated_signed_transaction wallet_api::update_account_meta(
 {
    FC_ASSERT( !is_locked() );
 
-   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } ).accounts;
+   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } );
    FC_ASSERT( accounts.size() == 1, "Account does not exist" );
    FC_ASSERT( account_name == accounts[0].name, "Account name doesn't match?" );
 
@@ -1600,7 +1600,7 @@ annotated_signed_transaction wallet_api::update_account_memo_key(
 {
    FC_ASSERT( !is_locked() );
 
-   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } ).accounts;
+   auto accounts = my->_remote_database_api->find_accounts( { { account_name } } );
    FC_ASSERT( accounts.size() == 1, "Account does not exist" );
    FC_ASSERT( account_name == accounts[0].name, "Account name doesn't match?" );
 
@@ -1624,7 +1624,7 @@ annotated_signed_transaction wallet_api::delegate_vesting_shares(
 {
    FC_ASSERT( !is_locked() );
 
-   auto accounts = my->_remote_database_api->find_accounts( { { delegator, delegatee } } ).accounts;
+   auto accounts = my->_remote_database_api->find_accounts( { { delegator, delegatee } } );
    FC_ASSERT( accounts.size() == 2 , "One or more of the accounts specified do not exist." );
    FC_ASSERT( delegator == accounts[0].name, "Delegator account is not right?" );
    FC_ASSERT( delegatee == accounts[1].name, "Delegatee account is not right?" );
@@ -1674,7 +1674,7 @@ annotated_signed_transaction wallet_api::update_witness(
 
    witness_update_operation op;
 
-   auto witnesses = my->_remote_database_api->find_witnesses( { { witness_account_name } } ).witnesses;
+   auto witnesses = my->_remote_database_api->find_witnesses( { { witness_account_name } } );
    if( witnesses.empty() )
    {
       op.url = url;
@@ -2107,7 +2107,7 @@ annotated_signed_transaction wallet_api::publish_feed(
 
 vector< api_convert_request_object > wallet_api::get_conversion_requests( string owner_account )
 {
-   return my->_remote_database_api->find_abd_conversion_requests( { owner_account } ).requests;
+   return my->_remote_database_api->find_abd_conversion_requests( { owner_account } );
 }
 
 string wallet_api::decrypt_memo( string encrypted_memo )
@@ -2171,7 +2171,7 @@ annotated_signed_transaction wallet_api::decline_voting_rights(
 
 map< uint32_t, api_operation_object > wallet_api::get_account_history( string account, uint64_t from, uint32_t limit )
 {
-   auto result = my->_remote_database_api->get_account_history( { account, from, limit } ).history;
+   auto result = my->_remote_database_api->get_account_history( { account, from, limit } );
    if( !is_locked() ) {
       for( auto& item : result )
       {
@@ -2201,13 +2201,13 @@ vector< api_withdraw_vesting_route_object > wallet_api::get_withdraw_routes( str
 
    if( type == outgoing || type == all )
    {
-      auto routes = my->_remote_database_api->find_withdraw_vesting_routes( { account, sort_order_type::by_withdraw_route } ).routes;
+      auto routes = my->_remote_database_api->find_withdraw_vesting_routes( { account, sort_order_type::by_withdraw_route } );
       result.insert( result.end(), routes.begin(), routes.end() );
    }
 
    if( type == incoming || type == all )
    {
-      auto routes = my->_remote_database_api->find_withdraw_vesting_routes( { account, sort_order_type::by_destination } ).routes;
+      auto routes = my->_remote_database_api->find_withdraw_vesting_routes( { account, sort_order_type::by_destination } );
       result.insert( result.end(), routes.begin(), routes.end() );
    }
       
@@ -2222,7 +2222,7 @@ order_book wallet_api::get_order_book( uint32_t limit )
 
 vector< api_limit_order_object > wallet_api::get_open_orders( string owner )
 {
-   return my->_remote_database_api->find_limit_orders( { owner } ).orders;
+   return my->_remote_database_api->find_limit_orders( { owner } );
 }
 
 annotated_signed_transaction wallet_api::create_order(

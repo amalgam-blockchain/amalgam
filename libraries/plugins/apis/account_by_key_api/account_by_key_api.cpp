@@ -20,7 +20,7 @@ class account_by_key_api_impl
 get_key_references_return account_by_key_api_impl::get_key_references( const get_key_references_args& args )const
 {
    get_key_references_return final_result;
-   final_result.accounts.reserve( args.keys.size() );
+   final_result.reserve( args.keys.size() );
 
    const auto& key_idx = _db.get_index< account_by_key::key_lookup_index >().indices().get< account_by_key::by_key >();
 
@@ -35,7 +35,7 @@ get_key_references_return account_by_key_api_impl::get_key_references( const get
          ++lookup_itr;
       }
 
-      final_result.accounts.emplace_back( std::move( result ) );
+      final_result.emplace_back( std::move( result ) );
    }
 
    return final_result;

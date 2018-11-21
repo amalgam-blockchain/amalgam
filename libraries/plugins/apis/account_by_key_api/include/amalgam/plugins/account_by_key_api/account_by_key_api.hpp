@@ -19,10 +19,7 @@ struct get_key_references_args
    std::vector< amalgam::protocol::public_key_type > keys;
 };
 
-struct get_key_references_return
-{
-   std::vector< std::vector< amalgam::protocol::account_name_type > > accounts;
-};
+typedef std::vector< std::vector< amalgam::protocol::account_name_type > > get_key_references_return;
 
 class account_by_key_api
 {
@@ -40,6 +37,3 @@ class account_by_key_api
 
 FC_REFLECT( amalgam::plugins::account_by_key::get_key_references_args,
    (keys) )
-
-FC_REFLECT( amalgam::plugins::account_by_key::get_key_references_return,
-   (accounts) )

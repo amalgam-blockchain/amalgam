@@ -74,17 +74,14 @@ struct get_trade_history_args
    uint32_t       limit = 1000;
 };
 
-struct get_trade_history_return
-{
-   std::vector< market_trade > trades;
-};
+typedef std::vector< market_trade > get_trade_history_return;
 
 struct get_recent_trades_args
 {
    uint32_t limit = 1000;
 };
 
-typedef get_trade_history_return get_recent_trades_return;
+typedef std::vector< market_trade > get_recent_trades_return;
 
 struct get_market_history_args
 {
@@ -93,17 +90,11 @@ struct get_market_history_args
    time_point_sec end;
 };
 
-struct get_market_history_return
-{
-   std::vector< market_history::bucket_object > buckets;
-};
+typedef std::vector< market_history::bucket_object > get_market_history_return;
 
 typedef void_type get_market_history_buckets_args;
 
-struct get_market_history_buckets_return
-{
-   flat_set< uint32_t > bucket_sizes;
-};
+typedef flat_set< uint32_t > get_market_history_buckets_return;
 
 
 namespace detail { class market_history_api_impl; }
@@ -152,17 +143,8 @@ FC_REFLECT( amalgam::plugins::market_history::market_trade,
 FC_REFLECT( amalgam::plugins::market_history::get_trade_history_args,
             (start)(end)(limit) )
 
-FC_REFLECT( amalgam::plugins::market_history::get_trade_history_return,
-            (trades) )
-
 FC_REFLECT( amalgam::plugins::market_history::get_recent_trades_args,
             (limit) )
 
 FC_REFLECT( amalgam::plugins::market_history::get_market_history_args,
             (bucket_seconds)(start)(end) )
-
-FC_REFLECT( amalgam::plugins::market_history::get_market_history_return,
-            (buckets) )
-
-FC_REFLECT( amalgam::plugins::market_history::get_market_history_buckets_return,
-            (bucket_sizes) )

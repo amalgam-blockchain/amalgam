@@ -49,10 +49,7 @@ struct get_block_header_args
    uint32_t block_num;
 };
 
-struct get_block_header_return
-{
-   optional< block_header > header;
-};
+typedef optional< block_header > get_block_header_return;
 
 
 /* get_block */
@@ -62,10 +59,7 @@ struct get_block_args
    uint32_t block_num;
 };
 
-struct get_block_return
-{
-   optional< api_signed_block_object > block;
-};
+typedef optional< api_signed_block_object > get_block_return;
 
 
 /* get_ops_in_block */
@@ -76,10 +70,7 @@ struct get_ops_in_block_args
    bool     only_virtual;
 };
 
-struct get_ops_in_block_return
-{
-   std::multiset< api_operation_object > ops;
-};
+typedef std::multiset< api_operation_object > get_ops_in_block_return;
 
 
 /* get_transaction */
@@ -167,10 +158,7 @@ struct list_witnesses_args
    sort_order_type   order;
 };
 
-struct list_witnesses_return
-{
-   vector< api_witness_object > witnesses;
-};
+typedef vector< api_witness_object > list_witnesses_return;
 
 
 struct find_witnesses_args
@@ -178,7 +166,7 @@ struct find_witnesses_args
    vector< account_name_type > owners;
 };
 
-typedef list_witnesses_return find_witnesses_return;
+typedef vector< api_witness_object > find_witnesses_return;
 
 
 struct list_witness_votes_args
@@ -188,18 +176,12 @@ struct list_witness_votes_args
    sort_order_type   order;
 };
 
-struct list_witness_votes_return
-{
-   vector< api_witness_vote_object > votes;
-};
+typedef vector< api_witness_vote_object > list_witness_votes_return;
 
 
 typedef void_type get_active_witnesses_args;
 
-struct get_active_witnesses_return
-{
-   vector< account_name_type > witnesses;
-};
+typedef vector< account_name_type > get_active_witnesses_return;
 
 
 /* Account */
@@ -211,10 +193,7 @@ struct list_accounts_args
    sort_order_type   order;
 };
 
-struct list_accounts_return
-{
-   vector< api_account_object > accounts;
-};
+typedef vector< api_account_object > list_accounts_return;
 
 
 struct find_accounts_args
@@ -222,7 +201,7 @@ struct find_accounts_args
    vector< account_name_type > accounts;
 };
 
-typedef list_accounts_return find_accounts_return;
+typedef vector< api_account_object > find_accounts_return;
 
 
 struct get_account_history_args
@@ -232,10 +211,7 @@ struct get_account_history_args
    uint32_t            limit = 1000;
 };
 
-struct get_account_history_return
-{
-   std::map< uint32_t, api_operation_object > history;
-};
+typedef std::map< uint32_t, api_operation_object > get_account_history_return;
 
 
 struct get_account_bandwidth_args
@@ -244,10 +220,7 @@ struct get_account_bandwidth_args
    bandwidth_type      type;
 };
 
-struct get_account_bandwidth_return
-{
-   optional< api_account_bandwidth_object > bandwidth;
-};
+typedef optional< api_account_bandwidth_object > get_account_bandwidth_return;
 
 
 /* Owner Auth History */
@@ -258,10 +231,7 @@ struct list_owner_histories_args
    uint32_t          limit;
 };
 
-struct list_owner_histories_return
-{
-   vector< api_owner_authority_history_object > owner_auths;
-};
+typedef vector< api_owner_authority_history_object > list_owner_histories_return;
 
 
 struct find_owner_histories_args
@@ -269,7 +239,7 @@ struct find_owner_histories_args
    account_name_type owner;
 };
 
-typedef list_owner_histories_return find_owner_histories_return;
+typedef vector< api_owner_authority_history_object > find_owner_histories_return;
 
 
 /* Account Recovery Requests */
@@ -281,10 +251,7 @@ struct list_account_recovery_requests_args
    sort_order_type   order;
 };
 
-struct list_account_recovery_requests_return
-{
-   vector< api_account_recovery_request_object > requests;
-};
+typedef vector< api_account_recovery_request_object > list_account_recovery_requests_return;
 
 
 struct find_account_recovery_requests_args
@@ -292,7 +259,7 @@ struct find_account_recovery_requests_args
    vector< account_name_type > accounts;
 };
 
-typedef list_account_recovery_requests_return find_account_recovery_requests_return;
+typedef vector< api_account_recovery_request_object > find_account_recovery_requests_return;
 
 
 /* Change Recovery Account Requests */
@@ -304,10 +271,7 @@ struct list_change_recovery_account_requests_args
    sort_order_type   order;
 };
 
-struct list_change_recovery_account_requests_return
-{
-   vector< api_change_recovery_account_request_object > requests;
-};
+typedef vector< api_change_recovery_account_request_object > list_change_recovery_account_requests_return;
 
 
 struct find_change_recovery_account_requests_args
@@ -315,7 +279,7 @@ struct find_change_recovery_account_requests_args
    vector< account_name_type > accounts;
 };
 
-typedef list_change_recovery_account_requests_return find_change_recovery_account_requests_return;
+typedef vector< api_change_recovery_account_request_object > find_change_recovery_account_requests_return;
 
 
 /* Escrow */
@@ -327,10 +291,7 @@ struct list_escrows_args
    sort_order_type   order;
 };
 
-struct list_escrows_return
-{
-   vector< api_escrow_object > escrows;
-};
+typedef vector< api_escrow_object > list_escrows_return;
 
 
 struct find_escrows_args
@@ -338,7 +299,7 @@ struct find_escrows_args
    account_name_type from;
 };
 
-typedef list_escrows_return find_escrows_return;
+typedef vector< api_escrow_object > find_escrows_return;
 
 
 /* Vesting Withdraw Routes */
@@ -350,10 +311,7 @@ struct list_withdraw_vesting_routes_args
    sort_order_type   order;
 };
 
-struct list_withdraw_vesting_routes_return
-{
-   vector< api_withdraw_vesting_route_object > routes;
-};
+typedef vector< api_withdraw_vesting_route_object > list_withdraw_vesting_routes_return;
 
 
 struct find_withdraw_vesting_routes_args
@@ -362,7 +320,7 @@ struct find_withdraw_vesting_routes_args
    sort_order_type   order;
 };
 
-typedef list_withdraw_vesting_routes_return find_withdraw_vesting_routes_return;
+typedef vector< api_withdraw_vesting_route_object > find_withdraw_vesting_routes_return;
 
 
 /* Savings Withdraw */
@@ -374,10 +332,7 @@ struct list_savings_withdrawals_args
    sort_order_type   order;
 };
 
-struct list_savings_withdrawals_return
-{
-   vector< api_savings_withdraw_object > withdrawals;
-};
+typedef vector< api_savings_withdraw_object > list_savings_withdrawals_return;
 
 
 struct find_savings_withdrawals_args
@@ -385,7 +340,7 @@ struct find_savings_withdrawals_args
    account_name_type account;
 };
 
-typedef list_savings_withdrawals_return find_savings_withdrawals_return;
+typedef vector< api_savings_withdraw_object > find_savings_withdrawals_return;
 
 
 /* Vesting Delegations */
@@ -397,10 +352,7 @@ struct list_vesting_delegations_args
    sort_order_type   order;
 };
 
-struct list_vesting_delegations_return
-{
-   vector< api_vesting_delegation_object > delegations;
-};
+typedef vector< api_vesting_delegation_object > list_vesting_delegations_return;
 
 
 struct find_vesting_delegations_args
@@ -408,7 +360,7 @@ struct find_vesting_delegations_args
    account_name_type account;
 };
 
-typedef list_vesting_delegations_return find_vesting_delegations_return;
+typedef vector< api_vesting_delegation_object > find_vesting_delegations_return;
 
 
 /* Vesting Delegation Expirations */
@@ -420,10 +372,7 @@ struct list_vesting_delegation_expirations_args
    sort_order_type   order;
 };
 
-struct list_vesting_delegation_expirations_return
-{
-   vector< api_vesting_delegation_expiration_object > delegations;
-};
+typedef vector< api_vesting_delegation_expiration_object > list_vesting_delegation_expirations_return;
 
 
 struct find_vesting_delegation_expirations_args
@@ -431,7 +380,7 @@ struct find_vesting_delegation_expirations_args
    account_name_type account;
 };
 
-typedef list_vesting_delegation_expirations_return find_vesting_delegation_expirations_return;
+typedef vector< api_vesting_delegation_expiration_object > find_vesting_delegation_expirations_return;
 
 
 /* ABD Conversions */
@@ -443,10 +392,7 @@ struct list_abd_conversion_requests_args
    sort_order_type   order;
 };
 
-struct list_abd_conversion_requests_return
-{
-   vector< api_convert_request_object > requests;
-};
+typedef vector< api_convert_request_object > list_abd_conversion_requests_return;
 
 
 struct find_abd_conversion_requests_args
@@ -454,7 +400,7 @@ struct find_abd_conversion_requests_args
    account_name_type account;
 };
 
-typedef list_abd_conversion_requests_return find_abd_conversion_requests_return;
+typedef vector< api_convert_request_object > find_abd_conversion_requests_return;
 
 
 /* Decline Voting Rights Requests */
@@ -466,10 +412,7 @@ struct list_decline_voting_rights_requests_args
    sort_order_type   order;
 };
 
-struct list_decline_voting_rights_requests_return
-{
-   vector< api_decline_voting_rights_request_object > requests;
-};
+typedef vector< api_decline_voting_rights_request_object > list_decline_voting_rights_requests_return;
 
 
 struct find_decline_voting_rights_requests_args
@@ -477,7 +420,7 @@ struct find_decline_voting_rights_requests_args
    vector< account_name_type > accounts;
 };
 
-typedef list_decline_voting_rights_requests_return find_decline_voting_rights_requests_return;
+typedef vector< api_decline_voting_rights_request_object > find_decline_voting_rights_requests_return;
 
 
 /* Limit Orders */
@@ -489,10 +432,7 @@ struct list_limit_orders_args
    sort_order_type   order;
 };
 
-struct list_limit_orders_return
-{
-   vector< api_limit_order_object > orders;
-};
+typedef vector< api_limit_order_object > list_limit_orders_return;
 
 
 struct find_limit_orders_args
@@ -500,7 +440,7 @@ struct find_limit_orders_args
    account_name_type account;
 };
 
-typedef list_limit_orders_return find_limit_orders_return;
+typedef vector< api_limit_order_object > find_limit_orders_return;
 
 
 struct get_transaction_hex_args
@@ -508,10 +448,7 @@ struct get_transaction_hex_args
    signed_transaction trx;
 };
 
-struct get_transaction_hex_return
-{
-   std::string hex;
-};
+typedef std::string get_transaction_hex_return;
 
 
 struct get_required_signatures_args
@@ -520,10 +457,7 @@ struct get_required_signatures_args
    flat_set< public_key_type > available_keys;
 };
 
-struct get_required_signatures_return
-{
-   set< public_key_type > keys;
-};
+typedef set< public_key_type > get_required_signatures_return;
 
 
 struct get_potential_signatures_args
@@ -531,7 +465,7 @@ struct get_potential_signatures_args
    signed_transaction trx;
 };
 
-typedef get_required_signatures_return get_potential_signatures_return;
+typedef set< public_key_type > get_potential_signatures_return;
 
 
 struct verify_authority_args
@@ -539,10 +473,7 @@ struct verify_authority_args
    signed_transaction trx;
 };
 
-struct verify_authority_return
-{
-   bool valid;
-};
+typedef bool verify_authority_return;
 
 struct verify_account_authority_args
 {
@@ -550,7 +481,7 @@ struct verify_account_authority_args
    flat_set< public_key_type > signers;
 };
 
-typedef verify_authority_return verify_account_authority_return;
+typedef bool verify_account_authority_return;
 
 struct verify_signatures_args
 {
@@ -582,33 +513,21 @@ struct verify_signatures_args
    }
 };
 
-struct verify_signatures_return
-{
-   bool valid;
-};
+typedef bool verify_signatures_return;
 
 } } } // amalgam::database_api
 
 FC_REFLECT( amalgam::plugins::database_api::get_block_header_args,
    (block_num) )
 
-FC_REFLECT( amalgam::plugins::database_api::get_block_header_return,
-   (header) )
-
 FC_REFLECT( amalgam::plugins::database_api::get_block_args,
    (block_num) )
-
-FC_REFLECT( amalgam::plugins::database_api::get_block_return,
-   (block) )
 
 FC_REFLECT( amalgam::plugins::database_api::get_version_return,
             (blockchain_version)(amalgam_revision)(fc_revision)(chain_id) )
 
 FC_REFLECT( amalgam::plugins::database_api::get_ops_in_block_args,
    (block_num)(only_virtual) )
-
-FC_REFLECT( amalgam::plugins::database_api::get_ops_in_block_return,
-   (ops) )
 
 FC_REFLECT( amalgam::plugins::database_api::get_transaction_args,
    (id) )
@@ -638,26 +557,14 @@ FC_REFLECT_ENUM( amalgam::plugins::database_api::sort_order_type,
 FC_REFLECT( amalgam::plugins::database_api::list_witnesses_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_witnesses_return,
-   (witnesses) )
-
 FC_REFLECT( amalgam::plugins::database_api::find_witnesses_args,
    (owners) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_witness_votes_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_witness_votes_return,
-   (votes) )
-
-FC_REFLECT( amalgam::plugins::database_api::get_active_witnesses_return,
-   (witnesses) )
-
 FC_REFLECT( amalgam::plugins::database_api::list_accounts_args,
    (start)(limit)(order) )
-
-FC_REFLECT( amalgam::plugins::database_api::list_accounts_return,
-   (accounts) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_accounts_args,
    (accounts) )
@@ -665,20 +572,11 @@ FC_REFLECT( amalgam::plugins::database_api::find_accounts_args,
 FC_REFLECT( amalgam::plugins::database_api::get_account_history_args,
    (account)(start)(limit) )
 
-FC_REFLECT( amalgam::plugins::database_api::get_account_history_return,
-   (history) )
-
 FC_REFLECT( amalgam::plugins::database_api::get_account_bandwidth_args,
             (account)(type) )
 
-FC_REFLECT( amalgam::plugins::database_api::get_account_bandwidth_return,
-            (bandwidth) )
-
 FC_REFLECT( amalgam::plugins::database_api::list_owner_histories_args,
    (start)(limit) )
-
-FC_REFLECT( amalgam::plugins::database_api::list_owner_histories_return,
-   (owner_auths) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_owner_histories_args,
    (owner) )
@@ -686,18 +584,11 @@ FC_REFLECT( amalgam::plugins::database_api::find_owner_histories_args,
 FC_REFLECT( amalgam::plugins::database_api::list_account_recovery_requests_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_account_recovery_requests_return,
-   (requests) )
-
 FC_REFLECT( amalgam::plugins::database_api::find_account_recovery_requests_args,
    (accounts) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_change_recovery_account_requests_args,
    (start)(limit)(order) )
-
-FC_REFLECT(
-   amalgam::plugins::database_api::list_change_recovery_account_requests_return,
-   (requests) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_change_recovery_account_requests_args,
    (accounts) )
@@ -705,17 +596,11 @@ FC_REFLECT( amalgam::plugins::database_api::find_change_recovery_account_request
 FC_REFLECT( amalgam::plugins::database_api::list_escrows_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_escrows_return,
-   (escrows) )
-
 FC_REFLECT( amalgam::plugins::database_api::find_escrows_args,
    (from) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_withdraw_vesting_routes_args,
    (start)(limit)(order) )
-
-FC_REFLECT( amalgam::plugins::database_api::list_withdraw_vesting_routes_return,
-   (routes) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_withdraw_vesting_routes_args,
    (account)(order) )
@@ -723,17 +608,11 @@ FC_REFLECT( amalgam::plugins::database_api::find_withdraw_vesting_routes_args,
 FC_REFLECT( amalgam::plugins::database_api::list_savings_withdrawals_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_savings_withdrawals_return,
-   (withdrawals) )
-
 FC_REFLECT( amalgam::plugins::database_api::find_savings_withdrawals_args,
    (account) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_vesting_delegations_args,
    (start)(limit)(order) )
-
-FC_REFLECT( amalgam::plugins::database_api::list_vesting_delegations_return,
-   (delegations) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_vesting_delegations_args,
    (account) )
@@ -741,17 +620,11 @@ FC_REFLECT( amalgam::plugins::database_api::find_vesting_delegations_args,
 FC_REFLECT( amalgam::plugins::database_api::list_vesting_delegation_expirations_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_vesting_delegation_expirations_return,
-   (delegations) )
-
 FC_REFLECT( amalgam::plugins::database_api::find_vesting_delegation_expirations_args,
    (account) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_abd_conversion_requests_args,
    (start)(limit)(order) )
-
-FC_REFLECT( amalgam::plugins::database_api::list_abd_conversion_requests_return,
-   (requests) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_abd_conversion_requests_args,
    (account) )
@@ -759,17 +632,11 @@ FC_REFLECT( amalgam::plugins::database_api::find_abd_conversion_requests_args,
 FC_REFLECT( amalgam::plugins::database_api::list_decline_voting_rights_requests_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::list_decline_voting_rights_requests_return,
-   (requests) )
-
 FC_REFLECT( amalgam::plugins::database_api::find_decline_voting_rights_requests_args,
    (accounts) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_limit_orders_args,
    (start)(limit)(order) )
-
-FC_REFLECT( amalgam::plugins::database_api::list_limit_orders_return,
-   (orders) )
 
 FC_REFLECT( amalgam::plugins::database_api::find_limit_orders_args,
    (account) )
@@ -777,24 +644,15 @@ FC_REFLECT( amalgam::plugins::database_api::find_limit_orders_args,
 FC_REFLECT( amalgam::plugins::database_api::get_transaction_hex_args,
    (trx) )
 
-FC_REFLECT( amalgam::plugins::database_api::get_transaction_hex_return,
-   (hex) )
-
 FC_REFLECT( amalgam::plugins::database_api::get_required_signatures_args,
    (trx)
    (available_keys) )
-
-FC_REFLECT( amalgam::plugins::database_api::get_required_signatures_return,
-   (keys) )
 
 FC_REFLECT( amalgam::plugins::database_api::get_potential_signatures_args,
    (trx) )
 
 FC_REFLECT( amalgam::plugins::database_api::verify_authority_args,
    (trx) )
-
-FC_REFLECT( amalgam::plugins::database_api::verify_authority_return,
-   (valid) )
 
 FC_REFLECT( amalgam::plugins::database_api::verify_account_authority_args,
    (account)
@@ -807,6 +665,3 @@ FC_REFLECT( amalgam::plugins::database_api::verify_signatures_args,
    (required_active)
    (required_posting)
    (required_other) )
-
-FC_REFLECT( amalgam::plugins::database_api::verify_signatures_return,
-   (valid) )

@@ -119,24 +119,18 @@ database_api_impl::~database_api_impl() {}
 
 DEFINE_API_IMPL( database_api_impl, get_block_header )
 {
-   get_block_header_return result;
-   auto block = _db.fetch_block_by_number( args.block_num );
-
-   if( block )
-      result.header = *block;
-
-   return result;
+   auto result = _db.fetch_block_by_number( args.block_num );
+   if( result )
+      return *result;
+   return {};
 }
 
 DEFINE_API_IMPL( database_api_impl, get_block )
 {
-   get_block_return result;
-   auto block = _db.fetch_block_by_number( args.block_num );
-
-   if( block )
-      result.block = *block;
-
-   return result;
+   auto result = _db.fetch_block_by_number( args.block_num );
+   if( result )
+      return *result;
+   return {};
 }
 
 DEFINE_API_IMPL( database_api_impl, get_ops_in_block )
@@ -154,7 +148,7 @@ DEFINE_API_IMPL( database_api_impl, get_ops_in_block )
       {
          api_operation_object temp = *itr;
          if( !args.only_virtual || is_virtual_operation( temp.op ) )
-            result.ops.emplace( std::move( temp ) );
+            result.emplace( std::move( temp ) );
          ++itr;
       }
 
@@ -246,7 +240,7 @@ DEFINE_API_IMPL( database_api_impl, get_hardfork_properties )
 
 DEFINE_API_IMPL( database_api_impl, get_current_price_feed )
 {
-   return _db.get_feed_history().current_median_history;;
+   return _db.get_feed_history().current_median_history;
 }
 
 DEFINE_API_IMPL( database_api_impl, get_feed_history )
@@ -266,7 +260,7 @@ DEFINE_API_IMPL( database_api_impl, list_witnesses )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_witnesses_return result;
-   result.witnesses.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -274,7 +268,7 @@ DEFINE_API_IMPL( database_api_impl, list_witnesses )
       {
          iterate_results< chain::witness_index, chain::by_name >(
             args.start.as< protocol::account_name_type >(),
-            result.witnesses,
+            result,
             args.limit,
             [&]( const witness_object& w ){ return api_witness_object( w ); } );
          break;
@@ -284,7 +278,7 @@ DEFINE_API_IMPL( database_api_impl, list_witnesses )
          auto key = args.start.as< std::pair< share_type, account_name_type > >();
          iterate_results< chain::witness_index, chain::by_vote_name >(
             boost::make_tuple( key.first, key.second ),
-            result.witnesses,
+            result,
             args.limit,
             [&]( const witness_object& w ){ return api_witness_object( w ); } );
          break;
@@ -295,7 +289,7 @@ DEFINE_API_IMPL( database_api_impl, list_witnesses )
          auto wit_id = _db.get< chain::witness_object, chain::by_name >( key.second ).id;
          iterate_results< chain::witness_index, chain::by_schedule_time >(
             boost::make_tuple( key.first, wit_id ),
-            result.witnesses,
+            result,
             args.limit,
             [&]( const witness_object& w ){ return api_witness_object( w ); } );
          break;
@@ -318,7 +312,7 @@ DEFINE_API_IMPL( database_api_impl, find_witnesses )
       auto witness = _db.find< chain::witness_object, chain::by_name >( o );
 
       if( witness != nullptr )
-         result.witnesses.push_back( api_witness_object( *witness ) );
+         result.push_back( api_witness_object( *witness ) );
    }
 
    return result;
@@ -329,7 +323,7 @@ DEFINE_API_IMPL( database_api_impl, list_witness_votes )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_witness_votes_return result;
-   result.votes.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -338,7 +332,7 @@ DEFINE_API_IMPL( database_api_impl, list_witness_votes )
          auto key = args.start.as< std::pair< account_name_type, account_name_type > >();
          iterate_results< chain::witness_vote_index, chain::by_account_witness >(
             boost::make_tuple( key.first, key.second ),
-            result.votes,
+            result,
             args.limit,
             [&]( const witness_vote_object& v ){ return api_witness_vote_object( v ); } );
          break;
@@ -348,7 +342,7 @@ DEFINE_API_IMPL( database_api_impl, list_witness_votes )
          auto key = args.start.as< std::pair< account_name_type, account_name_type > >();
          iterate_results< chain::witness_vote_index, chain::by_witness_account >(
             boost::make_tuple( key.first, key.second ),
-            result.votes,
+            result,
             args.limit,
             [&]( const witness_vote_object& v ){ return api_witness_vote_object( v ); } );
          break;
@@ -365,9 +359,9 @@ DEFINE_API_IMPL( database_api_impl, get_active_witnesses )
    const auto& wso = _db.get_witness_schedule_object();
    size_t n = wso.current_shuffled_witnesses.size();
    get_active_witnesses_return result;
-   result.witnesses.reserve( n );
+   result.reserve( n );
    for( size_t i=0; i<n; i++ )
-      result.witnesses.push_back( wso.current_shuffled_witnesses[i] );
+      result.push_back( wso.current_shuffled_witnesses[i] );
    return result;
 }
 
@@ -385,7 +379,7 @@ DEFINE_API_IMPL( database_api_impl, list_accounts )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_accounts_return result;
-   result.accounts.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -393,7 +387,7 @@ DEFINE_API_IMPL( database_api_impl, list_accounts )
       {
          iterate_results< chain::account_index, chain::by_name >(
             args.start.as< protocol::account_name_type >(),
-            result.accounts,
+            result,
             args.limit,
             [&]( const account_object& a ){ return api_account_object( a, _db ); } );
          break;
@@ -403,7 +397,7 @@ DEFINE_API_IMPL( database_api_impl, list_accounts )
          auto key = args.start.as< std::pair< account_name_type, account_name_type > >();
          iterate_results< chain::account_index, chain::by_proxy >(
             boost::make_tuple( key.first, key.second ),
-            result.accounts,
+            result,
             args.limit,
             [&]( const account_object& a ){ return api_account_object( a, _db ); } );
          break;
@@ -413,7 +407,7 @@ DEFINE_API_IMPL( database_api_impl, list_accounts )
          auto key = args.start.as< std::pair< fc::time_point_sec, account_name_type > >();
          iterate_results< chain::account_index, chain::by_next_vesting_withdrawal >(
             boost::make_tuple( key.first, key.second ),
-            result.accounts,
+            result,
             args.limit,
             [&]( const account_object& a ){ return api_account_object( a, _db ); } );
          break;
@@ -434,7 +428,7 @@ DEFINE_API_IMPL( database_api_impl, find_accounts )
    {
       auto acct = _db.find< chain::account_object, chain::by_name >( a );
       if( acct != nullptr )
-         result.accounts.push_back( api_account_object( *acct, _db ) );
+         result.push_back( api_account_object( *acct, _db ) );
    }
 
    return result;
@@ -462,7 +456,7 @@ DEFINE_API_IMPL( database_api_impl, get_account_history )
             break;
          if( n >= args.limit )
             break;
-         result.history[ itr->sequence ] = _db.get( itr->op );
+         result[ itr->sequence ] = _db.get( itr->op );
          ++itr;
          ++n;
       }
@@ -477,7 +471,7 @@ DEFINE_API_IMPL( database_api_impl, get_account_bandwidth )
 
    auto band = _db.find< witness::account_bandwidth_object, witness::by_account_bandwidth_type >( boost::make_tuple( args.account, args.type ) );
    if( band != nullptr )
-      result.bandwidth = *band;
+      result = *band;
 
    return result;
 }
@@ -490,12 +484,12 @@ DEFINE_API_IMPL( database_api_impl, list_owner_histories )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_owner_histories_return result;
-   result.owner_auths.reserve( args.limit );
+   result.reserve( args.limit );
 
    auto key = args.start.as< std::pair< account_name_type, fc::time_point_sec > >();
    iterate_results< chain::owner_authority_history_index, chain::by_account >(
       boost::make_tuple( key.first, key.second ),
-      result.owner_auths,
+      result,
       args.limit,
       [&]( const owner_authority_history_object& o ){ return api_owner_authority_history_object( o ); } );
 
@@ -509,9 +503,9 @@ DEFINE_API_IMPL( database_api_impl, find_owner_histories )
    const auto& hist_idx = _db.get_index< chain::owner_authority_history_index, chain::by_account >();
    auto itr = hist_idx.lower_bound( args.owner );
 
-   while( itr != hist_idx.end() && itr->account == args.owner && result.owner_auths.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != hist_idx.end() && itr->account == args.owner && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.owner_auths.push_back( api_owner_authority_history_object( *itr ) );
+      result.push_back( api_owner_authority_history_object( *itr ) );
       ++itr;
    }
 
@@ -526,7 +520,7 @@ DEFINE_API_IMPL( database_api_impl, list_account_recovery_requests )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_account_recovery_requests_return result;
-   result.requests.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -534,7 +528,7 @@ DEFINE_API_IMPL( database_api_impl, list_account_recovery_requests )
       {
          iterate_results< chain::account_recovery_request_index, chain::by_account >(
             args.start.as< account_name_type >(),
-            result.requests,
+            result,
             args.limit,
             [&]( const account_recovery_request_object& a ){ return api_account_recovery_request_object( a ); } );
          break;
@@ -544,7 +538,7 @@ DEFINE_API_IMPL( database_api_impl, list_account_recovery_requests )
          auto key = args.start.as< std::pair< fc::time_point_sec, account_name_type > >();
          iterate_results< chain::account_recovery_request_index, chain::by_expiration >(
             boost::make_tuple( key.first, key.second ),
-            result.requests,
+            result,
             args.limit,
             [&]( const account_recovery_request_object& a ){ return api_account_recovery_request_object( a ); } );
          break;
@@ -566,7 +560,7 @@ DEFINE_API_IMPL( database_api_impl, find_account_recovery_requests )
       auto request = _db.find< chain::account_recovery_request_object, chain::by_account >( a );
 
       if( request != nullptr )
-         result.requests.push_back( api_account_recovery_request_object( *request ) );
+         result.push_back( api_account_recovery_request_object( *request ) );
    }
 
    return result;
@@ -580,7 +574,7 @@ DEFINE_API_IMPL( database_api_impl, list_change_recovery_account_requests )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_change_recovery_account_requests_return result;
-   result.requests.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -588,7 +582,7 @@ DEFINE_API_IMPL( database_api_impl, list_change_recovery_account_requests )
       {
          iterate_results< chain::change_recovery_account_request_index, chain::by_account >(
             args.start.as< account_name_type >(),
-            result.requests,
+            result,
             args.limit,
             &database_api_impl::on_push_default< change_recovery_account_request_object > );
          break;
@@ -598,7 +592,7 @@ DEFINE_API_IMPL( database_api_impl, list_change_recovery_account_requests )
          auto key = args.start.as< std::pair< fc::time_point_sec, account_name_type > >();
          iterate_results< chain::change_recovery_account_request_index, chain::by_effective_date >(
             boost::make_tuple( key.first, key.second ),
-            result.requests,
+            result,
             args.limit,
             &database_api_impl::on_push_default< change_recovery_account_request_object > );
          break;
@@ -620,7 +614,7 @@ DEFINE_API_IMPL( database_api_impl, find_change_recovery_account_requests )
       auto request = _db.find< chain::change_recovery_account_request_object, chain::by_account >( a );
 
       if( request != nullptr )
-         result.requests.push_back( *request );
+         result.push_back( *request );
    }
 
    return result;
@@ -634,7 +628,7 @@ DEFINE_API_IMPL( database_api_impl, list_escrows )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_escrows_return result;
-   result.escrows.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -643,7 +637,7 @@ DEFINE_API_IMPL( database_api_impl, list_escrows )
          auto key = args.start.as< std::pair< account_name_type, uint32_t > >();
          iterate_results< chain::escrow_index, chain::by_from_id >(
             boost::make_tuple( key.first, key.second ),
-            result.escrows,
+            result,
             args.limit,
             &database_api_impl::on_push_default< escrow_object > );
          break;
@@ -654,7 +648,7 @@ DEFINE_API_IMPL( database_api_impl, list_escrows )
          FC_ASSERT( key.size() == 3, "by_ratification_deadline start requires 3 values. (bool, time_point_sec, escrow_id_type)" );
          iterate_results< chain::escrow_index, chain::by_ratification_deadline >(
             boost::make_tuple( key[0].as< bool >(), key[1].as< fc::time_point_sec >(), key[2].as< escrow_id_type >() ),
-            result.escrows,
+            result,
             args.limit,
             &database_api_impl::on_push_default< escrow_object > );
          break;
@@ -673,9 +667,9 @@ DEFINE_API_IMPL( database_api_impl, find_escrows )
    const auto& escrow_idx = _db.get_index< chain::escrow_index, chain::by_from_id >();
    auto itr = escrow_idx.lower_bound( args.from );
 
-   while( itr != escrow_idx.end() && itr->from == args.from && result.escrows.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != escrow_idx.end() && itr->from == args.from && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.escrows.push_back( *itr );
+      result.push_back( *itr );
       ++itr;
    }
 
@@ -690,7 +684,7 @@ DEFINE_API_IMPL( database_api_impl, list_withdraw_vesting_routes )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_withdraw_vesting_routes_return result;
-   result.routes.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -699,7 +693,7 @@ DEFINE_API_IMPL( database_api_impl, list_withdraw_vesting_routes )
          auto key = args.start.as< std::pair< account_name_type, account_name_type > >();
          iterate_results< chain::withdraw_vesting_route_index, chain::by_withdraw_route >(
             boost::make_tuple( key.first, key.second ),
-            result.routes,
+            result,
             args.limit,
             &database_api_impl::on_push_default< withdraw_vesting_route_object > );
          break;
@@ -709,7 +703,7 @@ DEFINE_API_IMPL( database_api_impl, list_withdraw_vesting_routes )
          auto key = args.start.as< std::pair< account_name_type, withdraw_vesting_route_id_type > >();
          iterate_results< chain::withdraw_vesting_route_index, chain::by_destination >(
             boost::make_tuple( key.first, key.second ),
-            result.routes,
+            result,
             args.limit,
             &database_api_impl::on_push_default< withdraw_vesting_route_object > );
          break;
@@ -732,9 +726,9 @@ DEFINE_API_IMPL( database_api_impl, find_withdraw_vesting_routes )
          const auto& route_idx = _db.get_index< chain::withdraw_vesting_route_index, chain::by_withdraw_route >();
          auto itr = route_idx.lower_bound( args.account );
 
-         while( itr != route_idx.end() && itr->from_account == args.account && result.routes.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+         while( itr != route_idx.end() && itr->from_account == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
          {
-            result.routes.push_back( *itr );
+            result.push_back( *itr );
             ++itr;
          }
 
@@ -745,9 +739,9 @@ DEFINE_API_IMPL( database_api_impl, find_withdraw_vesting_routes )
          const auto& route_idx = _db.get_index< chain::withdraw_vesting_route_index, chain::by_destination >();
          auto itr = route_idx.lower_bound( args.account );
 
-         while( itr != route_idx.end() && itr->to_account == args.account && result.routes.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+         while( itr != route_idx.end() && itr->to_account == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
          {
-            result.routes.push_back( *itr );
+            result.push_back( *itr );
             ++itr;
          }
 
@@ -768,7 +762,7 @@ DEFINE_API_IMPL( database_api_impl, list_savings_withdrawals )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_savings_withdrawals_return result;
-   result.withdrawals.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -777,7 +771,7 @@ DEFINE_API_IMPL( database_api_impl, list_savings_withdrawals )
          auto key = args.start.as< std::pair< account_name_type, uint32_t > >();
          iterate_results< chain::savings_withdraw_index, chain::by_from_rid >(
             boost::make_tuple( key.first, key.second ),
-            result.withdrawals,
+            result,
             args.limit,
             [&]( const savings_withdraw_object& w ){ return api_savings_withdraw_object( w ); } );
          break;
@@ -788,7 +782,7 @@ DEFINE_API_IMPL( database_api_impl, list_savings_withdrawals )
          FC_ASSERT( key.size() == 3, "by_complete_from_id start requires 3 values. (time_point_sec, account_name_type, uint32_t)" );
          iterate_results< chain::savings_withdraw_index, chain::by_complete_from_rid >(
             boost::make_tuple( key[0].as< fc::time_point_sec >(), key[1].as< account_name_type >(), key[2].as< uint32_t >() ),
-            result.withdrawals,
+            result,
             args.limit,
             [&]( const savings_withdraw_object& w ){ return api_savings_withdraw_object( w ); } );
          break;
@@ -799,7 +793,7 @@ DEFINE_API_IMPL( database_api_impl, list_savings_withdrawals )
          FC_ASSERT( key.size() == 3, "by_to_complete start requires 3 values. (account_name_type, time_point_sec, savings_withdraw_id_type" );
          iterate_results< chain::savings_withdraw_index, chain::by_to_complete >(
             boost::make_tuple( key[0].as< account_name_type >(), key[1].as< fc::time_point_sec >(), key[2].as< savings_withdraw_id_type >() ),
-            result.withdrawals,
+            result,
             args.limit,
             [&]( const savings_withdraw_object& w ){ return api_savings_withdraw_object( w ); } );
          break;
@@ -817,9 +811,9 @@ DEFINE_API_IMPL( database_api_impl, find_savings_withdrawals )
    const auto& withdraw_idx = _db.get_index< chain::savings_withdraw_index, chain::by_from_rid >();
    auto itr = withdraw_idx.lower_bound( args.account );
 
-   while( itr != withdraw_idx.end() && itr->from == args.account && result.withdrawals.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != withdraw_idx.end() && itr->from == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.withdrawals.push_back( api_savings_withdraw_object( *itr ) );
+      result.push_back( api_savings_withdraw_object( *itr ) );
       ++itr;
    }
 
@@ -834,7 +828,7 @@ DEFINE_API_IMPL( database_api_impl, list_vesting_delegations )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_vesting_delegations_return result;
-   result.delegations.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -843,7 +837,7 @@ DEFINE_API_IMPL( database_api_impl, list_vesting_delegations )
          auto key = args.start.as< std::pair< account_name_type, account_name_type > >();
          iterate_results< chain::vesting_delegation_index, chain::by_delegation >(
             boost::make_tuple( key.first, key.second ),
-            result.delegations,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_vesting_delegation_object > );
          break;
@@ -861,9 +855,9 @@ DEFINE_API_IMPL( database_api_impl, find_vesting_delegations )
    const auto& delegation_idx = _db.get_index< chain::vesting_delegation_index, chain::by_delegation >();
    auto itr = delegation_idx.lower_bound( args.account );
 
-   while( itr != delegation_idx.end() && itr->delegator == args.account && result.delegations.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != delegation_idx.end() && itr->delegator == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.delegations.push_back( api_vesting_delegation_object( *itr ) );
+      result.push_back( api_vesting_delegation_object( *itr ) );
       ++itr;
    }
 
@@ -878,7 +872,7 @@ DEFINE_API_IMPL( database_api_impl, list_vesting_delegation_expirations )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_vesting_delegation_expirations_return result;
-   result.delegations.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -887,7 +881,7 @@ DEFINE_API_IMPL( database_api_impl, list_vesting_delegation_expirations )
          auto key = args.start.as< std::pair< time_point_sec, vesting_delegation_expiration_id_type > >();
          iterate_results< chain::vesting_delegation_expiration_index, chain::by_expiration >(
             boost::make_tuple( key.first, key.second ),
-            result.delegations,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_vesting_delegation_expiration_object > );
          break;
@@ -898,7 +892,7 @@ DEFINE_API_IMPL( database_api_impl, list_vesting_delegation_expirations )
          FC_ASSERT( key.size() == 3, "by_account_expiration start requires 3 values. (account_name_type, time_point_sec, vesting_delegation_expiration_id_type" );
          iterate_results< chain::vesting_delegation_expiration_index, chain::by_account_expiration >(
             boost::make_tuple( key[0].as< account_name_type >(), key[1].as< time_point_sec >(), key[2].as< vesting_delegation_expiration_id_type >() ),
-            result.delegations,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_vesting_delegation_expiration_object > );
          break;
@@ -916,9 +910,9 @@ DEFINE_API_IMPL( database_api_impl, find_vesting_delegation_expirations )
    const auto& del_exp_idx = _db.get_index< chain::vesting_delegation_expiration_index, chain::by_account_expiration >();
    auto itr = del_exp_idx.lower_bound( args.account );
 
-   while( itr != del_exp_idx.end() && itr->delegator == args.account && result.delegations.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != del_exp_idx.end() && itr->delegator == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.delegations.push_back( *itr );
+      result.push_back( *itr );
       ++itr;
    }
 
@@ -933,7 +927,7 @@ DEFINE_API_IMPL( database_api_impl, list_abd_conversion_requests )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_abd_conversion_requests_return result;
-   result.requests.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -942,7 +936,7 @@ DEFINE_API_IMPL( database_api_impl, list_abd_conversion_requests )
          auto key = args.start.as< std::pair< time_point_sec, convert_request_id_type > >();
          iterate_results< chain::convert_request_index, chain::by_conversion_date >(
             boost::make_tuple( key.first, key.second ),
-            result.requests,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_convert_request_object > );
          break;
@@ -952,7 +946,7 @@ DEFINE_API_IMPL( database_api_impl, list_abd_conversion_requests )
          auto key = args.start.as< std::pair< account_name_type, uint32_t > >();
          iterate_results< chain::convert_request_index, chain::by_owner >(
             boost::make_tuple( key.first, key.second ),
-            result.requests,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_convert_request_object > );
          break;
@@ -970,9 +964,9 @@ DEFINE_API_IMPL( database_api_impl, find_abd_conversion_requests )
    const auto& convert_idx = _db.get_index< chain::convert_request_index, chain::by_owner >();
    auto itr = convert_idx.lower_bound( args.account );
 
-   while( itr != convert_idx.end() && itr->owner == args.account && result.requests.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != convert_idx.end() && itr->owner == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.requests.push_back( *itr );
+      result.push_back( *itr );
       ++itr;
    }
 
@@ -987,7 +981,7 @@ DEFINE_API_IMPL( database_api_impl, list_decline_voting_rights_requests )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_decline_voting_rights_requests_return result;
-   result.requests.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -995,7 +989,7 @@ DEFINE_API_IMPL( database_api_impl, list_decline_voting_rights_requests )
       {
          iterate_results< chain::decline_voting_rights_request_index, chain::by_account >(
             args.start.as< account_name_type >(),
-            result.requests,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_decline_voting_rights_request_object > );
          break;
@@ -1005,7 +999,7 @@ DEFINE_API_IMPL( database_api_impl, list_decline_voting_rights_requests )
          auto key = args.start.as< std::pair< time_point_sec, account_name_type > >();
          iterate_results< chain::decline_voting_rights_request_index, chain::by_effective_date >(
             boost::make_tuple( key.first, key.second ),
-            result.requests,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_decline_voting_rights_request_object > );
          break;
@@ -1027,7 +1021,7 @@ DEFINE_API_IMPL( database_api_impl, find_decline_voting_rights_requests )
       auto request = _db.find< chain::decline_voting_rights_request_object, chain::by_account >( a );
 
       if( request != nullptr )
-         result.requests.push_back( *request );
+         result.push_back( *request );
    }
 
    return result;
@@ -1047,7 +1041,7 @@ DEFINE_API_IMPL( database_api_impl, list_limit_orders )
    FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
 
    list_limit_orders_return result;
-   result.orders.reserve( args.limit );
+   result.reserve( args.limit );
 
    switch( args.order )
    {
@@ -1056,7 +1050,7 @@ DEFINE_API_IMPL( database_api_impl, list_limit_orders )
          auto key = args.start.as< std::pair< price, limit_order_id_type > >();
          iterate_results< chain::limit_order_index, chain::by_price >(
             boost::make_tuple( key.first, key.second ),
-            result.orders,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_limit_order_object > );
          break;
@@ -1066,7 +1060,7 @@ DEFINE_API_IMPL( database_api_impl, list_limit_orders )
          auto key = args.start.as< std::pair< account_name_type, uint32_t > >();
          iterate_results< chain::limit_order_index, chain::by_account >(
             boost::make_tuple( key.first, key.second ),
-            result.orders,
+            result,
             args.limit,
             &database_api_impl::on_push_default< api_limit_order_object > );
          break;
@@ -1084,9 +1078,9 @@ DEFINE_API_IMPL( database_api_impl, find_limit_orders )
    const auto& order_idx = _db.get_index< chain::limit_order_index, chain::by_account >();
    auto itr = order_idx.lower_bound( args.account );
 
-   while( itr != order_idx.end() && itr->seller == args.account && result.orders.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   while( itr != order_idx.end() && itr->seller == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
-      result.orders.push_back( *itr );
+      result.push_back( *itr );
       ++itr;
    }
 
@@ -1107,8 +1101,7 @@ DEFINE_API_IMPL( database_api_impl, get_transaction_hex )
 
 DEFINE_API_IMPL( database_api_impl, get_required_signatures )
 {
-   get_required_signatures_return result;
-   result.keys = args.trx.get_required_signatures( _db.get_chain_id(),
+   get_required_signatures_return result = args.trx.get_required_signatures( _db.get_chain_id(),
                                                    args.available_keys,
                                                    [&]( string account_name ){ return authority( _db.get< chain::account_authority_object, chain::by_account >( account_name ).active  ); },
                                                    [&]( string account_name ){ return authority( _db.get< chain::account_authority_object, chain::by_account >( account_name ).owner   ); },
@@ -1129,21 +1122,21 @@ DEFINE_API_IMPL( database_api_impl, get_potential_signatures )
       {
          const auto& auth = _db.get< chain::account_authority_object, chain::by_account >( account_name ).active;
          for( const auto& k : auth.get_keys() )
-            result.keys.insert( k );
+            result.insert( k );
          return authority( auth );
       },
       [&]( account_name_type account_name )
       {
          const auto& auth = _db.get< chain::account_authority_object, chain::by_account >( account_name ).owner;
          for( const auto& k : auth.get_keys() )
-            result.keys.insert( k );
+            result.insert( k );
          return authority( auth );
       },
       [&]( account_name_type account_name )
       {
          const auto& auth = _db.get< chain::account_authority_object, chain::by_account >( account_name ).posting;
          for( const auto& k : auth.get_keys() )
-            result.keys.insert( k );
+            result.insert( k );
          return authority( auth );
       },
       AMALGAM_MAX_SIG_CHECK_DEPTH,
@@ -1163,7 +1156,7 @@ DEFINE_API_IMPL( database_api_impl, verify_authority )
                            AMALGAM_MAX_AUTHORITY_MEMBERSHIP,
                            AMALGAM_MAX_SIG_CHECK_ACCOUNTS,
                            fc::ecc::canonical_signature_type::bip_0062 );
-   return verify_authority_return( { true } );
+   return true;
 }
 
 // TODO: This is broken. By the look of is, it has been since BitShares. verify_authority always
@@ -1195,7 +1188,7 @@ DEFINE_API_IMPL( database_api_impl, verify_signatures )
    }
 
    verify_signatures_return result;
-   result.valid = true;
+   result = true;
 
    // verify authority throws on failure, catch and return false
    try
@@ -1208,7 +1201,7 @@ DEFINE_API_IMPL( database_api_impl, verify_signatures )
          [this]( const string& name ) { return authority( _db.get< chain::account_authority_object, chain::by_account >( name ).posting ); },
          AMALGAM_MAX_SIG_CHECK_DEPTH );
    }
-   catch( fc::exception& ) { result.valid = false; }
+   catch( fc::exception& ) { result = false; }
 
    return result;
 }
