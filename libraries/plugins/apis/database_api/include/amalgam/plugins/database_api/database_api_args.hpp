@@ -179,6 +179,36 @@ struct list_witness_votes_args
 typedef vector< api_witness_vote_object > list_witness_votes_return;
 
 
+struct get_witness_votes_by_account_args
+{
+   account_name_type   account;
+};
+
+typedef vector< api_witness_vote_object > get_witness_votes_by_account_return;
+
+
+struct get_witness_votes_by_witness_args
+{
+   account_name_type   account;
+};
+
+typedef vector< api_witness_vote_object > get_witness_votes_by_witness_return;
+
+
+struct get_witnesses_by_vote_args
+{
+   account_name_type   account;
+   uint32_t            limit;
+};
+
+typedef vector< api_witness_object > get_witnesses_by_vote_return;
+
+
+typedef void_type get_witness_count_args;
+
+typedef uint64_t get_witness_count_return;
+
+
 typedef void_type get_active_witnesses_args;
 
 typedef vector< account_name_type > get_active_witnesses_return;
@@ -202,6 +232,11 @@ struct find_accounts_args
 };
 
 typedef vector< api_account_object > find_accounts_return;
+
+
+typedef void_type get_account_count_args;
+
+typedef uint64_t get_account_count_return;
 
 
 struct get_account_history_args
@@ -302,6 +337,15 @@ struct find_escrows_args
 typedef vector< api_escrow_object > find_escrows_return;
 
 
+struct get_escrow_args
+{
+   account_name_type from;
+   uint32_t          escrow_id;
+};
+
+typedef optional< api_escrow_object > get_escrow_return;
+
+
 /* Vesting Withdraw Routes */
 
 struct list_withdraw_vesting_routes_args
@@ -335,12 +379,20 @@ struct list_savings_withdrawals_args
 typedef vector< api_savings_withdraw_object > list_savings_withdrawals_return;
 
 
-struct find_savings_withdrawals_args
+struct find_savings_withdrawals_from_args
 {
    account_name_type account;
 };
 
-typedef vector< api_savings_withdraw_object > find_savings_withdrawals_return;
+typedef vector< api_savings_withdraw_object > find_savings_withdrawals_from_return;
+
+
+struct find_savings_withdrawals_to_args
+{
+   account_name_type account;
+};
+
+typedef vector< api_savings_withdraw_object > find_savings_withdrawals_to_return;
 
 
 /* Vesting Delegations */
@@ -563,6 +615,15 @@ FC_REFLECT( amalgam::plugins::database_api::find_witnesses_args,
 FC_REFLECT( amalgam::plugins::database_api::list_witness_votes_args,
    (start)(limit)(order) )
 
+FC_REFLECT( amalgam::plugins::database_api::get_witness_votes_by_account_args,
+   (account) )
+
+FC_REFLECT( amalgam::plugins::database_api::get_witness_votes_by_witness_args,
+   (account) )
+
+FC_REFLECT( amalgam::plugins::database_api::get_witnesses_by_vote_args,
+   (account)(limit) )
+
 FC_REFLECT( amalgam::plugins::database_api::list_accounts_args,
    (start)(limit)(order) )
 
@@ -599,6 +660,9 @@ FC_REFLECT( amalgam::plugins::database_api::list_escrows_args,
 FC_REFLECT( amalgam::plugins::database_api::find_escrows_args,
    (from) )
 
+FC_REFLECT( amalgam::plugins::database_api::get_escrow_args,
+   (from)(escrow_id) )
+
 FC_REFLECT( amalgam::plugins::database_api::list_withdraw_vesting_routes_args,
    (start)(limit)(order) )
 
@@ -608,7 +672,10 @@ FC_REFLECT( amalgam::plugins::database_api::find_withdraw_vesting_routes_args,
 FC_REFLECT( amalgam::plugins::database_api::list_savings_withdrawals_args,
    (start)(limit)(order) )
 
-FC_REFLECT( amalgam::plugins::database_api::find_savings_withdrawals_args,
+FC_REFLECT( amalgam::plugins::database_api::find_savings_withdrawals_from_args,
+   (account) )
+
+FC_REFLECT( amalgam::plugins::database_api::find_savings_withdrawals_to_args,
    (account) )
 
 FC_REFLECT( amalgam::plugins::database_api::list_vesting_delegations_args,

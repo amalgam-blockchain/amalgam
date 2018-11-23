@@ -37,9 +37,14 @@ class database_api_impl
          (list_witnesses)
          (find_witnesses)
          (list_witness_votes)
+         (get_witness_votes_by_account)
+         (get_witness_votes_by_witness)
+         (get_witnesses_by_vote)
+         (get_witness_count)
          (get_active_witnesses)
          (list_accounts)
          (find_accounts)
+         (get_account_count)
          (get_account_history)
          (get_account_bandwidth)
          (list_owner_histories)
@@ -50,10 +55,12 @@ class database_api_impl
          (find_change_recovery_account_requests)
          (list_escrows)
          (find_escrows)
+         (get_escrow)
          (list_withdraw_vesting_routes)
          (find_withdraw_vesting_routes)
          (list_savings_withdrawals)
-         (find_savings_withdrawals)
+         (find_savings_withdrawals_from)
+         (find_savings_withdrawals_to)
          (list_vesting_delegations)
          (find_vesting_delegations)
          (list_vesting_delegation_expirations)
@@ -354,6 +361,78 @@ DEFINE_API_IMPL( database_api_impl, list_witness_votes )
    return result;
 }
 
+DEFINE_API_IMPL( database_api_impl, get_witness_votes_by_account )
+{
+   get_witness_votes_by_account_return result;
+
+   const auto& vote_idx = _db.get_index< chain::witness_vote_index, chain::by_account_witness >();
+   auto itr = vote_idx.lower_bound( boost::make_tuple( args.account, account_name_type() ) );
+
+   while( itr != vote_idx.end() && itr->account == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   {
+      result.push_back( api_witness_vote_object( *itr ) );
+      ++itr;
+   }
+
+   return result;
+}
+
+DEFINE_API_IMPL( database_api_impl, get_witness_votes_by_witness )
+{
+   get_witness_votes_by_witness_return result;
+
+   const auto& vote_idx = _db.get_index< chain::witness_vote_index, chain::by_witness_account >();
+   auto itr = vote_idx.lower_bound( boost::make_tuple( args.account, account_name_type() ) );
+
+   while( itr != vote_idx.end() && itr->witness == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   {
+      result.push_back( api_witness_vote_object( *itr ) );
+      ++itr;
+   }
+
+   return result;
+}
+
+DEFINE_API_IMPL( database_api_impl, get_witnesses_by_vote )
+{
+   FC_ASSERT( args.limit <= DATABASE_API_SINGLE_QUERY_LIMIT );
+
+   account_name_type start_name = args.account;
+   vector< fc::variant > start_key;
+
+   if( start_name == account_name_type() )
+   {
+      start_key.push_back( fc::variant( std::numeric_limits< int64_t >::max() ) );
+      start_key.push_back( fc::variant( account_name_type() ) );
+   }
+   else
+   {
+      auto start = list_witnesses( { fc::variant( start_name ), 1, by_name } );
+
+      if( start.size() == 0 )
+         return get_witnesses_by_vote_return();
+
+      start_key.push_back( fc::variant( start[0].votes ) );
+      start_key.push_back( fc::variant( start[0].owner ) );
+   }
+
+   auto witnesses = list_witnesses( { fc::variant( start_key ), args.limit, by_vote_name } );
+
+   get_witnesses_by_vote_return result;
+
+   for( auto& w : witnesses )
+   {
+      result.push_back( api_witness_object( w ) );
+   }
+
+   return result;
+}
+
+DEFINE_API_IMPL( database_api_impl, get_witness_count )
+{
+   return _db.get_index< chain::witness_index >().indices().size();
+}
+
 DEFINE_API_IMPL( database_api_impl, get_active_witnesses )
 {
    const auto& wso = _db.get_witness_schedule_object();
@@ -432,6 +511,11 @@ DEFINE_API_IMPL( database_api_impl, find_accounts )
    }
 
    return result;
+}
+
+DEFINE_API_IMPL( database_api_impl, get_account_count )
+{
+   return _db.get_index< chain::account_index >().indices().size();
 }
 
 DEFINE_API_IMPL( database_api_impl, get_account_history )
@@ -676,6 +760,22 @@ DEFINE_API_IMPL( database_api_impl, find_escrows )
    return result;
 }
 
+DEFINE_API_IMPL( database_api_impl, get_escrow )
+{
+   get_escrow_return result;
+
+   auto escrows = list_escrows( { fc::variant( std::pair< account_name_type, uint32_t >( args.from, args.escrow_id ) ), 1, by_from_id } );
+
+   if( escrows.size()
+      && escrows[0].from == args.from
+      && escrows[0].escrow_id == args.escrow_id )
+   {
+      result = escrows[0];
+   }
+
+   return result;
+}
+
 
 /* Withdraw Vesting Routes */
 
@@ -805,13 +905,28 @@ DEFINE_API_IMPL( database_api_impl, list_savings_withdrawals )
    return result;
 }
 
-DEFINE_API_IMPL( database_api_impl, find_savings_withdrawals )
+DEFINE_API_IMPL( database_api_impl, find_savings_withdrawals_from )
 {
-   find_savings_withdrawals_return result;
+   find_savings_withdrawals_from_return result;
    const auto& withdraw_idx = _db.get_index< chain::savings_withdraw_index, chain::by_from_rid >();
    auto itr = withdraw_idx.lower_bound( args.account );
 
    while( itr != withdraw_idx.end() && itr->from == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
+   {
+      result.push_back( api_savings_withdraw_object( *itr ) );
+      ++itr;
+   }
+
+   return result;
+}
+
+DEFINE_API_IMPL( database_api_impl, find_savings_withdrawals_to )
+{
+   find_savings_withdrawals_to_return result;
+   const auto& withdraw_idx = _db.get_index< chain::savings_withdraw_index, chain::by_to_complete >();
+   auto itr = withdraw_idx.lower_bound( args.account );
+
+   while( itr != withdraw_idx.end() && itr->to == args.account && result.size() <= DATABASE_API_SINGLE_QUERY_LIMIT )
    {
       result.push_back( api_savings_withdraw_object( *itr ) );
       ++itr;
@@ -1227,9 +1342,14 @@ DEFINE_READ_APIS( database_api,
    (list_witnesses)
    (find_witnesses)
    (list_witness_votes)
+   (get_witness_votes_by_account)
+   (get_witness_votes_by_witness)
+   (get_witnesses_by_vote)
+   (get_witness_count)
    (get_active_witnesses)
    (list_accounts)
    (find_accounts)
+   (get_account_count)
    (get_account_bandwidth)
    (list_owner_histories)
    (find_owner_histories)
@@ -1239,10 +1359,12 @@ DEFINE_READ_APIS( database_api,
    (find_change_recovery_account_requests)
    (list_escrows)
    (find_escrows)
+   (get_escrow)
    (list_withdraw_vesting_routes)
    (find_withdraw_vesting_routes)
    (list_savings_withdrawals)
-   (find_savings_withdrawals)
+   (find_savings_withdrawals_from)
+   (find_savings_withdrawals_to)
    (list_vesting_delegations)
    (find_vesting_delegations)
    (list_vesting_delegation_expirations)

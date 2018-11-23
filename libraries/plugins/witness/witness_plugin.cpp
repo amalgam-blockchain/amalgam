@@ -276,7 +276,7 @@ namespace detail
             * the reserve ratio will half. Likewise, if it is at 12% it will increase by 50%.
             *
             * If the reserve ratio is consistently low, then it is probably time to increase
-            * the capcacity of the network.
+            * the capacity of the network.
             *
             * This algorithm is designed to react quickly to observations significantly
             * different from past observed behavior and make small adjustments when

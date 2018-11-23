@@ -85,6 +85,10 @@ class database_api
          (list_witnesses)
          (find_witnesses)
          (list_witness_votes)
+         (get_witness_votes_by_account)
+         (get_witness_votes_by_witness)
+         (get_witnesses_by_vote)
+         (get_witness_count)
          (get_active_witnesses)
 
          //////////////
@@ -101,6 +105,8 @@ class database_api
          * @brief Find accounts by primary key (account name)
          */
          (find_accounts)
+
+         (get_account_count)
 
          /**
           *  Account operations have sequence numbers from 0 to N where N is the most recent operation. This method
@@ -121,10 +127,12 @@ class database_api
          (find_change_recovery_account_requests)
          (list_escrows)
          (find_escrows)
+         (get_escrow)
          (list_withdraw_vesting_routes)
          (find_withdraw_vesting_routes)
          (list_savings_withdrawals)
-         (find_savings_withdrawals)
+         (find_savings_withdrawals_from)
+         (find_savings_withdrawals_to)
          (list_vesting_delegations)
          (find_vesting_delegations)
          (list_vesting_delegation_expirations)
