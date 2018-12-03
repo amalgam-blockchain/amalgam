@@ -19,7 +19,7 @@
 #define ABD_SYMBOL      (uint64_t(3) | (uint64_t('A') << 8) | (uint64_t('M') << 16) | (uint64_t('L') << 24) | (uint64_t('D') << 32)) ///< AMALGAM Backed Dollars with 3 digits of precision
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
-#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1536019200))
+#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1543795200))
 
 #define AMALGAM_MIN_ACCOUNT_CREATION_FEE          0
 #define AMALGAM_MAX_ACCOUNT_CREATION_FEE          int64_t(1000000000)
@@ -41,7 +41,7 @@
 #define ABD_SYMBOL      (uint64_t(3) | (uint64_t('A') << 8) | (uint64_t('M') << 16) | (uint64_t('L') << 24) | (uint64_t('D') << 32)) ///< AMALGAM Backed Dollars with 3 digits of precision
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
-#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1536019200))
+#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1543795200))
 
 #define AMALGAM_MIN_ACCOUNT_CREATION_FEE          3000 // 3 AML
 #define AMALGAM_MAX_ACCOUNT_CREATION_FEE          int64_t(1000000000)
@@ -79,9 +79,9 @@
 #define AMALGAM_1_TENTH_PERCENT                 (AMALGAM_100_PERCENT/1000)
 #define AMALGAM_DEFAULT_ABD_INTEREST_RATE       (10*AMALGAM_1_PERCENT) ///< 10% APR
 
-#define AMALGAM_INFLATION_RATE_START_PERCENT    (950) // Fixes block 0 to 9.5%
+#define AMALGAM_INFLATION_RATE_START_PERCENT    (500) // Fixes block 0 to 5%
 #define AMALGAM_INFLATION_RATE_STOP_PERCENT     (95) // 0.95%
-#define AMALGAM_INFLATION_NARROWING_PERIOD      (250000) // Narrow 0.01% every 250k blocks
+#define AMALGAM_INFLATION_NARROWING_PERIOD      (260000) // Narrow 0.01% every 260k blocks
 #define AMALGAM_CONTENT_REWARD_PERCENT          (75*AMALGAM_1_PERCENT) //75% of inflation
 #define AMALGAM_VESTING_FUND_PERCENT            (15*AMALGAM_1_PERCENT) //15% of inflation
 
@@ -98,15 +98,15 @@
 
 #define AMALGAM_MAX_WITNESS_URL_LENGTH          2048
 
-#define AMALGAM_INIT_SUPPLY                     int64_t(500000000000ll)
+#define AMALGAM_INIT_SUPPLY                     int64_t(750000000000ll)
 #define AMALGAM_MAX_SHARE_SUPPLY                int64_t(1000000000000000ll)
 #define AMALGAM_MAX_SATOSHIS                    int64_t(4611686018427387903ll)
 #define AMALGAM_MAX_SIG_CHECK_DEPTH             2
 #define AMALGAM_MAX_SIG_CHECK_ACCOUNTS          125
 #define AMALGAM_MAX_AUTHORITY_MEMBERSHIP        40
 
-#define AMALGAM_INIT_VESTING_FUND               uint64_t(360000000000ll)
-#define AMALGAM_INIT_VESTING_SHARES             uint64_t(900000000000000000ll) // to set a vesting rate of 400 AML per MegaAMLV with about 2% interest
+#define AMALGAM_INIT_VESTING_FUND               uint64_t(276000000000ll);
+#define AMALGAM_INIT_VESTING_SHARES             uint64_t(690000000000000000ll) // to set a vesting rate of 400 AML per MegaAMLV with about 2% interest
 
 #define AMALGAM_MIN_TRANSACTION_SIZE_LIMIT      1024
 #define AMALGAM_SECONDS_PER_YEAR                (uint64_t(60*60*24*365ll))
