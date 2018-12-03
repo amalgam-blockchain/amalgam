@@ -105,7 +105,7 @@
 #define AMALGAM_MAX_SIG_CHECK_ACCOUNTS          125
 #define AMALGAM_MAX_AUTHORITY_MEMBERSHIP        40
 
-#define AMALGAM_INIT_VESTING_FUND               uint64_t(276000000000ll);
+#define AMALGAM_INIT_VESTING_FUND               uint64_t(276000000000ll)
 #define AMALGAM_INIT_VESTING_SHARES             uint64_t(690000000000000000ll) // to set a vesting rate of 400 AML per MegaAMLV with about 2% interest
 
 #define AMALGAM_MIN_TRANSACTION_SIZE_LIMIT      1024
