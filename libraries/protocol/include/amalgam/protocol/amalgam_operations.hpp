@@ -181,6 +181,7 @@ namespace amalgam { namespace protocol {
       account_name_type from;
       account_name_type to;      ///< if null, then same as from
       asset             amount;  ///< must be AMALGAM
+      string            memo;
 
       void validate()const;
       void get_required_active_authorities( flat_set<account_name_type>& a )const{ a.insert(from); }
@@ -779,7 +780,7 @@ FC_REFLECT( amalgam::protocol::account_update_operation,
             (json_metadata) )
 
 FC_REFLECT( amalgam::protocol::transfer_operation, (from)(to)(amount)(memo) )
-FC_REFLECT( amalgam::protocol::transfer_to_vesting_operation, (from)(to)(amount) )
+FC_REFLECT( amalgam::protocol::transfer_to_vesting_operation, (from)(to)(amount)(memo) )
 FC_REFLECT( amalgam::protocol::withdraw_vesting_operation, (account)(vesting_shares) )
 FC_REFLECT( amalgam::protocol::set_withdraw_vesting_route_operation, (from_account)(to_account)(percent)(auto_vest) )
 FC_REFLECT( amalgam::protocol::witness_update_operation, (owner)(url)(block_signing_key)(props)(fee) )

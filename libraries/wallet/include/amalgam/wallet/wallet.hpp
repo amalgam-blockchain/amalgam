@@ -689,12 +689,14 @@ class wallet_api
        * @param from The account the AMALGAM is coming from
        * @param to The account getting the VESTS
        * @param amount The amount of AMALGAM to vest i.e. "100.000 AML"
+       * @param memo A memo for the transaction, encrypted with the to account's public memo key
        * @param broadcast true if you wish to broadcast the transaction
        */
       annotated_signed_transaction transfer_to_vesting(
          string from,
          string to,
          asset amount,
+         string memo,
          bool broadcast = false);
 
       /**

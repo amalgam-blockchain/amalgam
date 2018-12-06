@@ -60,6 +60,8 @@ namespace amalgam { namespace protocol {
       FC_ASSERT( is_asset_type( amount, AMALGAM_SYMBOL ), "Amount must be AMALGAM" );
       if ( to != account_name_type() ) validate_account_name( to );
       FC_ASSERT( amount.amount > 0, "Must transfer a nonzero amount" );
+      FC_ASSERT( memo.size() < AMALGAM_MAX_MEMO_SIZE, "Memo is too large" );
+      FC_ASSERT( fc::is_utf8( memo ), "Memo is not UTF8" );
    }
 
    void withdraw_vesting_operation::validate() const

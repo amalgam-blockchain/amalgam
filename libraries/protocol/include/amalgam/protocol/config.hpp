@@ -19,7 +19,7 @@
 #define ABD_SYMBOL      (uint64_t(3) | (uint64_t('A') << 8) | (uint64_t('M') << 16) | (uint64_t('L') << 24) | (uint64_t('D') << 32)) ///< AMALGAM Backed Dollars with 3 digits of precision
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
-#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1543795200))
+#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1544054400))
 
 #define AMALGAM_MIN_ACCOUNT_CREATION_FEE          0
 #define AMALGAM_MAX_ACCOUNT_CREATION_FEE          int64_t(1000000000)
@@ -41,7 +41,7 @@
 #define ABD_SYMBOL      (uint64_t(3) | (uint64_t('A') << 8) | (uint64_t('M') << 16) | (uint64_t('L') << 24) | (uint64_t('D') << 32)) ///< AMALGAM Backed Dollars with 3 digits of precision
 #define AMALGAM_ADDRESS_PREFIX                  "AML"
 
-#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1543795200))
+#define AMALGAM_GENESIS_TIME                    (fc::time_point_sec(1544054400))
 
 #define AMALGAM_MIN_ACCOUNT_CREATION_FEE          3000 // 3 AML
 #define AMALGAM_MAX_ACCOUNT_CREATION_FEE          int64_t(1000000000)

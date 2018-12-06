@@ -1823,7 +1823,6 @@ annotated_signed_transaction wallet_api::transfer(
     op.from = from;
     op.to = to;
     op.amount = amount;
-
     op.memo = get_encrypted_memo( from, to, memo );
 
     signed_transaction tx;
@@ -2017,17 +2016,20 @@ annotated_signed_transaction wallet_api::transfer_to_vesting(
    string from,
    string to,
    asset amount,
+   string memo,
    bool broadcast )
 {
    FC_ASSERT( !is_locked() );
-    transfer_to_vesting_operation op;
-    op.from = from;
-    op.to = (to == from ? "" : to);
-    op.amount = amount;
+   check_memo( memo, get_account( from ) );
+   transfer_to_vesting_operation op;
+   op.from = from;
+   op.to = (to == from ? "" : to);
+   op.amount = amount;
+   op.memo = get_encrypted_memo( from, to, memo );
 
-    signed_transaction tx;
-    tx.operations.push_back( op );
-    tx.validate();
+   signed_transaction tx;
+   tx.operations.push_back( op );
+   tx.validate();
 
    return my->sign_transaction( tx, broadcast );
 }
@@ -2038,13 +2040,13 @@ annotated_signed_transaction wallet_api::withdraw_vesting(
    bool broadcast )
 {
    FC_ASSERT( !is_locked() );
-    withdraw_vesting_operation op;
-    op.account = from;
-    op.vesting_shares = vesting_shares;
+   withdraw_vesting_operation op;
+   op.account = from;
+   op.vesting_shares = vesting_shares;
 
-    signed_transaction tx;
-    tx.operations.push_back( op );
-    tx.validate();
+   signed_transaction tx;
+   tx.operations.push_back( op );
+   tx.validate();
 
    return my->sign_transaction( tx, broadcast );
 }
@@ -2057,15 +2059,15 @@ annotated_signed_transaction wallet_api::set_withdraw_vesting_route(
    bool broadcast )
 {
    FC_ASSERT( !is_locked() );
-    set_withdraw_vesting_route_operation op;
-    op.from_account = from;
-    op.to_account = to;
-    op.percent = percent;
-    op.auto_vest = auto_vest;
+   set_withdraw_vesting_route_operation op;
+   op.from_account = from;
+   op.to_account = to;
+   op.percent = percent;
+   op.auto_vest = auto_vest;
 
-    signed_transaction tx;
-    tx.operations.push_back( op );
-    tx.validate();
+   signed_transaction tx;
+   tx.operations.push_back( op );
+   tx.validate();
 
    return my->sign_transaction( tx, broadcast );
 }
@@ -2076,14 +2078,14 @@ annotated_signed_transaction wallet_api::convert_abd(
    bool broadcast )
 {
    FC_ASSERT( !is_locked() );
-    convert_operation op;
-    op.owner = from;
-    op.requestid = fc::time_point::now().sec_since_epoch();
-    op.amount = amount;
+   convert_operation op;
+   op.owner = from;
+   op.requestid = fc::time_point::now().sec_since_epoch();
+   op.amount = amount;
 
-    signed_transaction tx;
-    tx.operations.push_back( op );
-    tx.validate();
+   signed_transaction tx;
+   tx.operations.push_back( op );
+   tx.validate();
 
    return my->sign_transaction( tx, broadcast );
 }
@@ -2094,13 +2096,13 @@ annotated_signed_transaction wallet_api::publish_feed(
    bool broadcast )
 {
    FC_ASSERT( !is_locked() );
-    feed_publish_operation op;
-    op.publisher     = witness;
-    op.exchange_rate = exchange_rate;
+   feed_publish_operation op;
+   op.publisher     = witness;
+   op.exchange_rate = exchange_rate;
 
-    signed_transaction tx;
-    tx.operations.push_back( op );
-    tx.validate();
+   signed_transaction tx;
+   tx.operations.push_back( op );
+   tx.validate();
 
    return my->sign_transaction( tx, broadcast );
 }
@@ -2178,6 +2180,11 @@ map< uint32_t, api_operation_object > wallet_api::get_account_history( string ac
          if( item.second.op.which() == operation::tag<transfer_operation>::value )
          {
             auto& top = item.second.op.get<transfer_operation>();
+            top.memo = decrypt_memo( top.memo );
+         }
+         else if( item.second.op.which() == operation::tag<transfer_to_vesting_operation>::value )
+         {
+            auto& top = item.second.op.get<transfer_to_vesting_operation>();
             top.memo = decrypt_memo( top.memo );
          }
          else if( item.second.op.which() == operation::tag<transfer_from_savings_operation>::value )
