@@ -133,6 +133,9 @@
 #define AMALGAM_MAX_LIMIT_ORDER_EXPIRATION     (60*60*24*28) // 28 days
 #define AMALGAM_DELEGATION_RETURN_PERIOD       (5*60*60*24) // 5 days
 
+#define AMALGAM_BLOCK_GENERATION_POSTPONED_TX_LIMIT 5
+#define AMALGAM_PENDING_TRANSACTION_EXECUTION_LIMIT fc::milliseconds(200)
+
 /**
  *  Reserved Account IDs with special meaning
  */
