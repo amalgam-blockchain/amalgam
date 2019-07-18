@@ -1,7 +1,8 @@
 #pragma once
+#include <cstdint>
+#include <fc/uint128.hpp>
 
 namespace fc {
-class uint128;
 class variant;
 } // fc
 
@@ -13,15 +14,10 @@ class fixed_string_impl;
 
 namespace fc { namespace raw {
 
-template<typename Stream>
-inline void pack( Stream& s, const uint128& u );
-template<typename Stream>
-inline void unpack( Stream& s, uint128& u );
-
 template< typename Stream, typename Storage >
 inline void pack( Stream& s, const amalgam::protocol::fixed_string_impl< Storage >& u );
 template< typename Stream, typename Storage >
-inline void unpack( Stream& s, amalgam::protocol::fixed_string_impl< Storage >& u );
+inline void unpack( Stream& s, amalgam::protocol::fixed_string_impl< Storage >& u, uint32_t depth = 0 );
 
 } // raw
 

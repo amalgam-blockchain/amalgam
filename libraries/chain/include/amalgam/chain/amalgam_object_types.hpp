@@ -154,7 +154,7 @@ namespace fc
          s.write( (const char*)&id._id, sizeof(id._id) );
       }
       template<typename Stream, typename T>
-      inline void unpack( Stream& s, chainbase::oid<T>& id )
+      inline void unpack( Stream& s, chainbase::oid<T>& id, uint32_t )
       {
          s.read( (char*)&id._id, sizeof(id._id));
       }

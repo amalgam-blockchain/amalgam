@@ -751,7 +751,7 @@ void custom_binary_evaluator::do_apply( const custom_binary_operation& o )
 void feed_publish_evaluator::do_apply( const feed_publish_operation& o )
 {
    FC_ASSERT( is_asset_type( o.exchange_rate.base, ABD_SYMBOL ) && is_asset_type( o.exchange_rate.quote, AMALGAM_SYMBOL ),
-         "Price feed must be a SBD/STEEM price" );
+         "Price feed must be a ABD/AMALGAM price" );
 
    const auto& witness = _db.get_witness( o.publisher );
    _db.modify( witness, [&]( witness_object& w )
